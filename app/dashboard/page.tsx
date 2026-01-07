@@ -1,6 +1,16 @@
+// app/dashboard/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+type PerVideoSurveyItem = {
+  videoId: string;
+  order: number;
+  surveyId: string | null;
+  title: string | null;
+  completed: boolean;
+};
 
 type DashboardData = {
   email: string;
@@ -9,9 +19,9 @@ type DashboardData = {
     completed: number;
     nextVideo: { id: string; order: number; title: string } | null;
   };
-  // Yeni API’ye göre daha esnek bir surveys tipi
   surveys?: {
     perVideo?: {
+      items?: PerVideoSurveyItem[];
       total?: number;
       completed?: number;
     };
@@ -24,9 +34,20 @@ type DashboardData = {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+   async function handleLogout() {
+    try {
+      await fetch("/api/logout", { method: "POST" });
+      router.push("/login");
+    } catch (e) {
+      console.error(e);
+      alert("Çıkış yapılırken bir hata oluştu.");
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -78,9 +99,14 @@ export default function DashboardPage() {
   const progress =
     videos.total > 0 ? Math.round((videos.completed / videos.total) * 100) : 0;
 
-  // Yeni survey yapısını güvenli şekilde oku
-  const perVideoTotal = surveys?.perVideo?.total ?? videos.total ?? 0;
-  const perVideoCompleted = surveys?.perVideo?.completed ?? videos.completed ?? 0;
+  // 🔹 Anket ilerlemesini S A D E C E anketlerden hesapla
+  const perVideoItems = surveys?.perVideo?.items ?? [];
+  const perVideoTotal =
+    surveys?.perVideo?.total ?? perVideoItems.length ?? 0;
+  const perVideoCompleted =
+    surveys?.perVideo?.completed ??
+    perVideoItems.filter((s) => s.completed).length ??
+    0;
 
   const followup = surveys?.followup;
   const followupNeeded = followup?.needed ?? false;
@@ -91,7 +117,38 @@ export default function DashboardPage() {
       <main className="app-main">
         {/* ÜST HERO */}
         <section className="dashboard-hero">
-          <div className="dashboard-pill">Akademik Araştırma Portalı</div>
+
+
+          
+          <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+      marginBottom: "0.8rem",
+    }}
+  >
+    <div className="dashboard-pill">Akademik Araştırma Portalı</div>
+
+    <button
+      type="button"
+      onClick={handleLogout}
+      style={{
+        fontSize: "0.8rem",
+        padding: "0.45rem 0.9rem",
+        borderRadius: 999,
+        border: "1px solid rgba(148,163,184,0.6)",
+        background: "rgba(219, 234, 254, 0.8)",
+        boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
+        cursor: "pointer",
+        color: "#6366f1",
+        whiteSpace: "nowrap",
+      }}
+    >
+      Çıkış yap
+    </button>
+  </div>
           <h1>Hoş geldin 👋</h1>
           <p className="dashboard-hero-sub">
             Bu bölümden eğitim ilerlemeni ve anket durumunu takip edebilirsin.
@@ -106,7 +163,10 @@ export default function DashboardPage() {
           >
             Giriş yaptığın e-posta: <b>{email}</b>
           </p>
+
+          
         </section>
+        
 
         {/* ORTA KARTLAR */}
         <section className="dashboard-grid">
@@ -210,7 +270,7 @@ export default function DashboardPage() {
             </div>
           </article>
 
-          {/* Anketler kartı – tasarım aynı, içerik yeni yapıya göre */}
+          {/* Anketler kartı */}
           <article className="dashboard-card">
             <h2 style={{ marginBottom: "0.6rem" }}>Anketler</h2>
             <p
@@ -310,6 +370,16 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
+            </div>
+            
+            <div style={{ marginTop: "0.9rem", textAlign: "right" }}>
+              <a
+                href="/surveys"
+                className="survey-link"
+                style={{ fontSize: "0.8rem" }}
+              >
+                Tüm anketleri gör ↗
+              </a>
             </div>
           </article>
         </section>

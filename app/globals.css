@@ -21,7 +21,10 @@ body {
   background:
     url("/app-bg.png") center top / cover no-repeat,
     #f9fbff;
-
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: #111827;
 }
 

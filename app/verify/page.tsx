@@ -31,6 +31,7 @@ function VerifyContent() {
         const data = await res.json();
         setError(data.error || "Doğrulama kodu hatalı.");
       }
+       router.push("/login");
     } catch {
       setError("Bir hata oluştu, lütfen tekrar deneyin.");
     } finally {

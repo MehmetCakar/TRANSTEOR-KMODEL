@@ -5,20 +5,22 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 
 type VideoData = {
-  id: string;
-  order: number;
-  title: string;
-  description: string | null;
-  url: string;
-  durationSeconds: number;
-  watchedSeconds: number;
-  isCompleted: boolean;
+  video: {
+    id: string;
+    order: number;
+    title: string;
+    description: string | null;
+    url: string | null;
+    durationSeconds: number;
+  };
+  progress: {
+    watchedSeconds: number;
+    isCompleted: boolean;
+  } | null;
 };
 
 export default function VideoPage() {
   const router = useRouter();
-
-  // ✅ Next 14/15: params için useParams kullan
   const params = useParams<{ id: string }>();
   const videoId = params?.id;
 
@@ -27,7 +29,6 @@ export default function VideoPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Eğer herhangi bir sebeple id yoksa
   useEffect(() => {
     if (!videoId) {
       setError("Video bulunamadı (geçersiz adres).");
@@ -35,7 +36,6 @@ export default function VideoPage() {
     }
   }, [videoId]);
 
-  // Video bilgisini çek
   useEffect(() => {
     if (!videoId) return;
 
@@ -57,35 +57,29 @@ export default function VideoPage() {
   }, [videoId]);
 
   async function handleComplete() {
-    if (!data) return;
+    if (!videoId || !data) return;
     setSaving(true);
     setError(null);
 
-      try {
-    // 1) videoyu tamamlandı olarak işaretle
-    await fetch(`/api/videos/${videoId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        watchedSeconds: data.durationSeconds,
-        isCompleted: true,
-      }),
-    });
+    try {
+      // 1) videoyu tamamlandı işaretle
+      await fetch(`/api/videos/${videoId}`, {
+        method: "POST",
+      });
 
-    // 2) bu videoya bağlı survey var mı?
-    const res = await fetch(`/api/videos/${videoId}/survey`);
-    const json = await res.json();
+      // 2) bu videonun anketi var mı?
+      const res = await fetch(`/api/videos/${videoId}/survey`);
+      const json = await res.json();
 
-    if (json.surveyId && !json.alreadyFilled) {
-      router.push(`/survey/${json.surveyId}`);
-    } else {
-      // anket yoksa veya daha önce doldurmuşsa
-      router.push("/dashboard");
-    }
-  } catch (e) {
-    console.error(e);
-    alert("Bir hata oluştu. Lütfen tekrar deneyin.");
-  } finally {
+      if (json.surveyId && !json.alreadyFilled) {
+        router.push(`/survey/${json.surveyId}`);
+      } else {
+        router.push("/dashboard");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("Bir hata oluştu. Lütfen tekrar deneyin.");
+    } finally {
       setSaving(false);
     }
   }
@@ -113,7 +107,13 @@ export default function VideoPage() {
           </div>
           <div className="dashboard-card">
             <h1>Video yüklenirken bir sorun oluştu</h1>
-            <p style={{ marginTop: "0.5rem", color: "#b91c1c", fontSize: "0.9rem" }}>
+            <p
+              style={{
+                marginTop: "0.5rem",
+                color: "#b91c1c",
+                fontSize: "0.9rem",
+              }}
+            >
               {error || "Video bulunamadı."}
             </p>
           </div>
@@ -123,14 +123,16 @@ export default function VideoPage() {
   }
 
   const minutes =
-  typeof data.durationSeconds === "number" && !isNaN(data.durationSeconds)
-    ? Math.round(data.durationSeconds / 60)
-    : null;
+    typeof data.video.durationSeconds === "number" &&
+    !isNaN(data.video.durationSeconds)
+      ? Math.round(data.video.durationSeconds / 60)
+      : null;
+
+  const isCompleted = data.progress?.isCompleted ?? false;
 
   return (
     <div className="app-shell">
       <div className="app-main">
-        {/* Üst başlık ve breadcrumb */}
         <div className="video-page-header">
           <button
             type="button"
@@ -141,22 +143,22 @@ export default function VideoPage() {
           </button>
 
           <div className="video-title-block">
-            <p className="video-section-label">Bölüm {data.order}</p>
-            <h1 className="video-main-title">{data.title}</h1>
+            <p className="video-section-label">Bölüm {data.video.order}</p>
+            <h1 className="video-main-title">{data.video.title}</h1>
             <p className="video-subtitle">
-              Evlilik öncesi riskli cinsel davranışlar eğitimi – Bölüm {data.order}
+              Evlilik öncesi riskli cinsel davranışlar eğitimi – Bölüm{" "}
+              {data.video.order}
             </p>
           </div>
         </div>
 
-        {/* Ana düzen: video + yan bilgiler */}
         <div className="video-layout">
-          {/* Sol: Video kartı */}
+          {/* Video kartı */}
           <section className="video-card">
             <div className="video-player-wrapper">
               <video
                 className="video-player"
-                src={data.url}
+                src={data.video.url || undefined}
                 controls
                 controlsList="nodownload"
               >
@@ -164,12 +166,12 @@ export default function VideoPage() {
               </video>
             </div>
 
-            {data.description && (
-              <p className="video-description">{data.description}</p>
+            {data.video.description && (
+              <p className="video-description">{data.video.description}</p>
             )}
           </section>
 
-          {/* Sağ: Bilgi kartı */}
+          {/* Sağ bilgi kartı */}
           <aside className="video-meta-card">
             <h2 className="video-meta-title">Eğitim Özeti</h2>
 
@@ -180,7 +182,7 @@ export default function VideoPage() {
               </div>
               <div className="video-meta-row">
                 <dt>Durum</dt>
-                <dd>{data.isCompleted ? "Tamamlandı" : "Devam ediyor"}</dd>
+                <dd>{isCompleted ? "Tamamlandı" : "Devam ediyor"}</dd>
               </div>
             </dl>
 

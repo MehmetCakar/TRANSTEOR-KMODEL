@@ -39,7 +39,7 @@ model Video {
   isActive        Boolean @default(true)
 
   progresses VideoProgress[]
-  survey     Survey?         @relation("VideoSurvey")
+  
 }
 
 model VideoProgress {
@@ -69,7 +69,6 @@ model Survey {
   title    String
   type     SurveyType
   isActive Boolean    @default(true)
-  video    Video?     @relation("VideoSurvey", fields: [videoId], references: [id])
   videoId  String?    @unique // VIDEO tipi anketler için ilgili video
 
   questions SurveyQuestion[]
