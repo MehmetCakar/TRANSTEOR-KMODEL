@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { sendMail } from './mail';
+import { isAdminEmail } from './admin';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
@@ -27,13 +28,7 @@ function randomCode(): string {
 }
 
 // === REGISTER ===
-// Go'daki Register mantığını bire bir kopyalıyoruz:
-// - email normalize
-// - kullanıcı yoksa → yeni user
-// - kullanıcı varsa:
-//    - verified=true → ErrEmailInUse
-//    - verified=false → password + code + expires güncelle
-export async function registerUser(email: string, password: string) {
+export async function registerUser(email: string, password: string, role: "USER" | "ADMIN" = "USER") {
   email = email.trim().toLowerCase();
   password = password.trim();
 
@@ -47,14 +42,14 @@ export async function registerUser(email: string, password: string) {
 
   const code = randomCode();
   const expires = new Date(Date.now() + CODE_TTL_MS);
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, 10); 
 
   if (!existing) {
-    // yeni kullanıcı
     await prisma.user.create({
       data: {
         email,
         passwordHash,
+        role,
         isVerified: false,
         verificationCode: code,
         verificationExpiresAt: expires,
@@ -63,7 +58,6 @@ export async function registerUser(email: string, password: string) {
   } else {
     // kullanıcı var
     if (existing.isVerified) {
-      // Go'da: u.Verified ise ErrEmailInUse
       throw new Error(ErrEmailInUse);
     }
 
@@ -72,6 +66,7 @@ export async function registerUser(email: string, password: string) {
       where: { email },
       data: {
         passwordHash,
+        role,
         verificationCode: code,
         verificationExpiresAt: expires,
         isVerified: false,
@@ -94,10 +89,6 @@ export async function registerUser(email: string, password: string) {
 }
 
 // === VERIFY ===
-// Go'daki Verify:
-// - user bulamazsa error
-// - VerifyCode boş veya eşleşmiyorsa → "invalid code"
-// - VerifyExpires geçmişse → "code expired"
 export async function verifyUser(email: string, code: string) {
   email = email.trim().toLowerCase();
   code = code.trim();
@@ -129,10 +120,6 @@ export async function verifyUser(email: string, code: string) {
 }
 
 // === RESEND ===
-// Go'daki Resend:
-// - user yoksa "user not found"
-// - verified=true ise ErrEmailInUse
-// - aksi halde yeni code + expires + mail
 export async function resendVerification(email: string) {
   email = email.trim().toLowerCase();
 
@@ -170,10 +157,6 @@ export async function resendVerification(email: string) {
 }
 
 // === LOGIN ===
-// Go'daki Login:
-// - email'e göre user bulamazsa → ErrInvalidCredentials
-// - şifre yanlışsa → ErrInvalidCredentials
-// - verified değilse → ErrNotVerified
 export async function loginUser(email: string, password: string) {
   email = email.trim().toLowerCase();
   password = password.trim();
@@ -196,7 +179,6 @@ export async function loginUser(email: string, password: string) {
 }
 
 // === JWT ===
-// Go'da IssueJWT: sub=email, exp, iat
 export function issueJWT(email: string, ttl: number) {
   const nowSec = Math.floor(Date.now() / 1000);
   const expSec = nowSec + Math.floor(ttl / 1000);
@@ -210,7 +192,7 @@ export function issueJWT(email: string, ttl: number) {
   return jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256' });
 }
 
-// Go'daki ParseJWT: sub claim'den email döndürüyor
+// === JWT PARSE ===
 export function parseJWT(token: string): string {
   const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
 
@@ -222,11 +204,3 @@ export function parseJWT(token: string): string {
   throw new Error('bad claims');
 }
 
-// Ekstra: RandomPassword, şimdilik ihtiyacımız yok ama istersek ekleriz.
-// Buraya istersen şu fonksiyonu da koyabiliriz:
-//
-// export function randomPassword(): string {
-//   const buf = Buffer.alloc(18);
-//   crypto.randomFillSync(buf);
-//   return buf.toString('base64url');
-// }

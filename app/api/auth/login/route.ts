@@ -1,3 +1,5 @@
+// app/api/auth/login/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import {
   ErrInvalidCredentials,
@@ -5,6 +7,7 @@ import {
   issueJWT,
   loginUser,
 } from '@/lib/auth';
+import { isAdminEmail } from '@/lib/admin';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -24,8 +27,9 @@ export async function POST(req: NextRequest) {
 
     const ttlMs = 30 * 24 * 60 * 60 * 1000; // 30 gün
     const token = issueJWT(email, ttlMs);
+    const isAdmin = isAdminEmail(email);
 
-    const res = NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true, isAdmin });
 
     res.cookies.set('access_token', token, {
       httpOnly: true,

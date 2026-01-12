@@ -1,3 +1,5 @@
+// app/login/page.tsx
+
 "use client";
 
 import { useState, FormEvent } from "react";
@@ -31,7 +33,8 @@ export default function LoginPage() {
         setError(data.error || "Giriş yapılamadı. Bilgilerinizi kontrol edin.");
         return;
       }
-      router.push("/dashboard");
+      
+      router.push(data.isAdmin ? "/admin" : "/dashboard");
     } catch (err) {
       setError("Sunucuya ulaşılamadı. Lütfen tekrar deneyin.");
     } finally {
