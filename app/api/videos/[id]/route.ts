@@ -1,7 +1,7 @@
 // app/api/videos/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseJWT } from "@/lib/auth";
+import { parseJWT } from "@/lib/jwt";
 
 async function getUserFromRequest(req: NextRequest) {
   const token = req.cookies.get("access_token")?.value;

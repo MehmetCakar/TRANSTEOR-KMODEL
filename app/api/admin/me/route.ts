@@ -1,9 +1,9 @@
 // app/api/admin/me/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/requireAdmin";
+import { requireAdmin } from "@/lib/admin";
 
 export async function GET(req: NextRequest) {
   const r = await requireAdmin(req);
-  if (!r.ok) return r.res;
-  return NextResponse.json({ ok: true, email: r.email });
+  if (!r.ok) return r.error;
+  return NextResponse.json({ ok: true, email: r.user.email });
 }

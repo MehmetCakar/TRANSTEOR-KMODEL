@@ -1,14 +1,14 @@
 // app/api/admin/surveys/[id]/questions/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/requireAdmin";
+import { requireAdmin } from "@/lib/admin";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const r = await requireAdmin(req);
-  if (!r.ok) return r.res;
+  if (!r.ok) return r.status;
 
   const { id: surveyId } = await params;
   const body = await req.json().catch(() => ({}));

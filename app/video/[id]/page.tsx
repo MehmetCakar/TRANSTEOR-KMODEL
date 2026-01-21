@@ -1,7 +1,7 @@
 // app/video/[id]/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 
 type VideoData = {
@@ -29,6 +29,8 @@ export default function VideoPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const endedOnceRef = useRef(false);
+
   useEffect(() => {
     if (!videoId) {
       setError("Video bulunamadı (geçersiz adres).");
@@ -43,11 +45,8 @@ export default function VideoPage() {
       try {
         const res = await fetch(`/api/videos/${videoId}`);
         const json = await res.json();
-        if (!res.ok) {
-          setError(json.error || "Video bilgisi alınamadı.");
-        } else {
-          setData(json);
-        }
+        if (!res.ok) setError(json.error || "Video bilgisi alınamadı.");
+        else setData(json);
       } catch (err: any) {
         setError(err.message || "Bir hata oluştu.");
       } finally {
@@ -58,14 +57,14 @@ export default function VideoPage() {
 
   async function handleComplete() {
     if (!videoId || !data) return;
+    if (saving) return;
+
     setSaving(true);
     setError(null);
 
     try {
       // 1) videoyu tamamlandı işaretle
-      await fetch(`/api/videos/${videoId}`, {
-        method: "POST",
-      });
+      await fetch(`/api/videos/${videoId}`, { method: "POST" });
 
       // 2) bu videonun anketi var mı?
       const res = await fetch(`/api/videos/${videoId}/survey`);
@@ -82,6 +81,13 @@ export default function VideoPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // ✅ Video bitince otomatik çalışacak
+  async function handleEnded() {
+    if (endedOnceRef.current) return;
+    endedOnceRef.current = true;
+    await handleComplete();
   }
 
   if (loading) {
@@ -107,13 +113,7 @@ export default function VideoPage() {
           </div>
           <div className="dashboard-card">
             <h1>Video yüklenirken bir sorun oluştu</h1>
-            <p
-              style={{
-                marginTop: "0.5rem",
-                color: "#b91c1c",
-                fontSize: "0.9rem",
-              }}
-            >
+            <p style={{ marginTop: "0.5rem", color: "#b91c1c", fontSize: "0.9rem" }}>
               {error || "Video bulunamadı."}
             </p>
           </div>
@@ -123,8 +123,7 @@ export default function VideoPage() {
   }
 
   const minutes =
-    typeof data.video.durationSeconds === "number" &&
-    !isNaN(data.video.durationSeconds)
+    typeof data.video.durationSeconds === "number" && !isNaN(data.video.durationSeconds)
       ? Math.round(data.video.durationSeconds / 60)
       : null;
 
@@ -146,14 +145,12 @@ export default function VideoPage() {
             <p className="video-section-label">Bölüm {data.video.order}</p>
             <h1 className="video-main-title">{data.video.title}</h1>
             <p className="video-subtitle">
-              Evlilik öncesi riskli cinsel davranışlar eğitimi – Bölüm{" "}
-              {data.video.order}
+              Evlilik öncesi riskli cinsel davranışlar eğitimi – Bölüm {data.video.order}
             </p>
           </div>
         </div>
 
         <div className="video-layout">
-          {/* Video kartı */}
           <section className="video-card">
             <div className="video-player-wrapper">
               <video
@@ -161,17 +158,15 @@ export default function VideoPage() {
                 src={data.video.url || undefined}
                 controls
                 controlsList="nodownload"
+                onEnded={handleEnded} // ✅ EKLENDİ
               >
                 Tarayıcınız video oynatmayı desteklemiyor.
               </video>
             </div>
 
-            {data.video.description && (
-              <p className="video-description">{data.video.description}</p>
-            )}
+            {data.video.description && <p className="video-description">{data.video.description}</p>}
           </section>
 
-          {/* Sağ bilgi kartı */}
           <aside className="video-meta-card">
             <h2 className="video-meta-title">Eğitim Özeti</h2>
 
@@ -187,9 +182,8 @@ export default function VideoPage() {
             </dl>
 
             <p className="video-meta-note">
-              Videoyu izlerken istediğin zaman duraklatabilir, kendine alan
-              tanıyabilirsin. Amaç, seni zorlamak değil; yavaş yavaş bilgiyle
-              güçlendirmek. 💙
+              Videoyu izlerken istediğin zaman duraklatabilir, kendine alan tanıyabilirsin.
+              Amaç, seni zorlamak değil; yavaş yavaş bilgiyle güçlendirmek. 💙
             </p>
 
             <button

@@ -1,6 +1,7 @@
 // lib/requireAdmin.ts
+
 import { NextRequest, NextResponse } from "next/server";
-import { parseJWT } from "@/lib/auth";
+import { parseJWT } from "@/lib/jwt";
 import { prisma } from "@/lib/prisma";
 import { isAdminEmail } from "@/lib/admin";
 

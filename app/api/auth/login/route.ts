@@ -4,9 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   ErrInvalidCredentials,
   ErrNotVerified,
-  issueJWT,
   loginUser,
 } from '@/lib/auth';
+import { issueJWT } from '@/lib/jwt';
 import { isAdminEmail } from '@/lib/admin';
 
 export async function POST(req: NextRequest) {
@@ -23,12 +23,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await loginUser(email, password);
+    //ait loginUser(email, password);
+    const user = await loginUser(email, password);
 
     const ttlMs = 30 * 24 * 60 * 60 * 1000; // 30 gün
-    const token = issueJWT(email, ttlMs);
-    const isAdmin = isAdminEmail(email);
-
+    const isAdmin = user.role === 'ADMIN' || isAdminEmail(email);
+    const token = issueJWT(email, ttlMs, isAdmin ? 'ADMIN' : 'USER');
     const res = NextResponse.json({ ok: true, isAdmin });
 
     res.cookies.set('access_token', token, {

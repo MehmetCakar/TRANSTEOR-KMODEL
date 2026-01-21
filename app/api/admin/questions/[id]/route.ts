@@ -1,7 +1,7 @@
 // app/api/admin/questions/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/requireAdmin";
+import { requireAdmin } from "@/lib/admin";
 
 export async function PATCH(
   req: NextRequest,

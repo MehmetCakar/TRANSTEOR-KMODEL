@@ -26,6 +26,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json().catch(() => ({}));
@@ -33,8 +34,11 @@ export default function LoginPage() {
         setError(data.error || "Giriş yapılamadı. Bilgilerinizi kontrol edin.");
         return;
       }
+      console.log("login response data:", data);
       
-      router.push(data.isAdmin ? "/admin" : "/dashboard");
+      //router.push(data.isAdmin ? "/admin" : "/dashboard");
+      window.location.href = data.isAdmin ? "/admin" : "/dashboard";
+      return;
     } catch (err) {
       setError("Sunucuya ulaşılamadı. Lütfen tekrar deneyin.");
     } finally {

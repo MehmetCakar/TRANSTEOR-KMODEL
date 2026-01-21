@@ -1,7 +1,11 @@
+// app/api/admin/surveys/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { SurveyType } from "@prisma/client";
+
+type IncomingOption = { order?: number; text?: string; isCorrect?: boolean };
+type IncomingQuestion = { order?: number; text?: string; options?: IncomingOption[] };
 
 export async function POST(req: NextRequest) {
   const guard = await requireAdmin(req);
@@ -18,22 +22,40 @@ export async function POST(req: NextRequest) {
     ? (rawType as SurveyType)
     : null;
 
-  const questions: { order: number; text: string }[] = Array.isArray(body?.questions)
-    ? body.questions
-        .map((q: any, i: number) => ({
+  const questions = Array.isArray(body?.questions)
+    ? (body.questions as IncomingQuestion[])
+        .map((q, i) => ({
           order: Number(q?.order ?? i + 1),
           text: String(q?.text ?? "").trim(),
+          options: Array.isArray(q?.options)
+            ? q.options
+                .map((o, j) => ({
+                  order: Number(o?.order ?? j + 1),
+                  text: String(o?.text ?? "").trim(),
+                  isCorrect: Boolean(o?.isCorrect),
+                }))
+                .filter(o => o.text.length > 0)
+            : [],
         }))
-        // @ts-expect-error
-        .filter((q): q is { order: number; text: string } => q.text.length > 0)
+        .filter(q => q.text.length > 0)
     : [];
 
   if (!title || !type) {
     return NextResponse.json({ error: "title ve geçerli type zorunlu" }, { status: 400 });
   }
-
   if (type === "VIDEO" && !videoId) {
     return NextResponse.json({ error: "VIDEO anketi için videoId zorunlu" }, { status: 400 });
+  }
+
+  // basit validasyon: her soruda en az 2 şık + 1 doğru
+  for (const q of questions) {
+    if (q.options.length < 2) {
+      return NextResponse.json({ error: `Soru ${q.order}: en az 2 şık olmalı` }, { status: 400 });
+    }
+    const correctCount = q.options.filter(o => o.isCorrect).length;
+    if (correctCount !== 1) {
+      return NextResponse.json({ error: `Soru ${q.order}: tam 1 doğru şık seçilmeli` }, { status: 400 });
+    }
   }
 
   const created = await prisma.$transaction(async (tx) => {
@@ -46,15 +68,29 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (questions.length) {
-      await tx.surveyQuestion.createMany({
-        data: questions.map((q) => ({ surveyId: survey.id, order: q.order, text: q.text })),
+    for (const q of questions) {
+      const question = await tx.surveyQuestion.create({
+        data: { surveyId: survey.id, order: q.order, text: q.text },
+      });
+
+      await tx.surveyOption.createMany({
+        data: q.options.map((o) => ({
+          questionId: question.id,
+          order: o.order,
+          text: o.text,
+          isCorrect: o.isCorrect,
+        })),
       });
     }
 
     return tx.survey.findUnique({
       where: { id: survey.id },
-      include: { questions: { orderBy: { order: "asc" } } },
+      include: {
+        questions: {
+          orderBy: { order: "asc" },
+          include: { options: { orderBy: { order: "asc" } } },
+        },
+      },
     });
   });
 

@@ -1,3 +1,4 @@
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -60,13 +61,8 @@ model Survey {
   responses SurveyResponse[]
 }
 
-model SurveyQuestion {
-  id       String @id @default(cuid())
-  surveyId String
-  order    Int
-  text     String
-  Survey   Survey @relation(fields: [surveyId], references: [id])
-}
+
+
 
 model SurveyResponse {
   id        String   @id @default(cuid())
@@ -101,4 +97,29 @@ enum SurveyType {
   POST
   FOLLOWUP
   VIDEO
+}
+model SurveyQuestion {
+  id        String        @id @default(cuid())
+  surveyId  String
+  order     Int
+  text      String
+
+  survey    Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  options   SurveyOption[]
+
+  @@index([surveyId])
+  @@unique([surveyId, order])
+}
+
+model SurveyOption {
+  id          String  @id @default(cuid())
+  questionId  String
+  order       Int
+  text        String
+  isCorrect   Boolean @default(false)
+
+  question    SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@unique([questionId, order])
 }

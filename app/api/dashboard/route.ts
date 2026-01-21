@@ -1,7 +1,7 @@
 // app/api/dashboard/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseJWT } from "@/lib/auth";
+import { parseJWT } from "@/lib/jwt";
 
 export async function GET(req: NextRequest) {
   try {

@@ -8,13 +8,12 @@ import { isAdminEmail } from './admin';
 const JWT_SECRET = process.env.JWT_SECRET!;
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
 
-// === Go'daki hata sabitlerine denk gelen string'ler ===
 export const ErrEmailInUse = 'EMAIL_IN_USE';
 export const ErrInvalidCredentials = 'INVALID_CREDENTIALS';
 export const ErrNotVerified = 'NOT_VERIFIED';
 export const ErrCodeInvalid = 'CODE_INVALID';
 
-// Kodun geçerlilik süresi (Go'daki codeTTL gibi) - 1 saat
+// Kodun geçerlilik süresi - 1 saat
 const CODE_TTL_MS = 60 * 60 * 1000;
 
 if (!JWT_SECRET) {
@@ -178,29 +177,5 @@ export async function loginUser(email: string, password: string) {
   return user;
 }
 
-// === JWT ===
-export function issueJWT(email: string, ttl: number) {
-  const nowSec = Math.floor(Date.now() / 1000);
-  const expSec = nowSec + Math.floor(ttl / 1000);
 
-  const payload: jwt.JwtPayload = {
-    sub: email,
-    iat: nowSec,
-    exp: expSec,
-  };
-
-  return jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256' });
-}
-
-// === JWT PARSE ===
-export function parseJWT(token: string): string {
-  const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
-
-  const sub = decoded.sub;
-  if (typeof sub === 'string') {
-    return sub;
-  }
-
-  throw new Error('bad claims');
-}
 
