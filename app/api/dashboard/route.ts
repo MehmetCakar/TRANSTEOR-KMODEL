@@ -10,16 +10,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "no auth" }, { status: 401 });
     }
 
-    let email: string;
+    // ✅ parseJWT bazen email döner bazen userId dönebilir
+    let claim: string;
     try {
-      email = parseJWT(token);
+      claim = String(parseJWT(token)).trim();
     } catch {
       return NextResponse.json({ error: "invalid token" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    // ✅ kullanıcıyı hem id hem email ile bul
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: claim },
+          { email: claim.toLowerCase() },
+        ],
+      },
+    });
+
     if (!user) {
-      return NextResponse.json({ error: "user not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "user not found", tokenClaim: claim },
+        { status: 404 }
+      );
     }
 
     // 1) Videolar + ilerleme
@@ -79,19 +92,18 @@ export async function GET(req: NextRequest) {
         order: video.order,
         surveyId: survey?.id ?? null,
         title: survey?.title ?? null,
-        completed: !!response,      // anket dolduruldu mu
-        videoCompleted,             // ilgili video bitti mi
+        completed: !!response, // anket dolduruldu mu
+        videoCompleted,        // ilgili video bitti mi
       };
     });
 
     const totalVideoSurveys = surveysPerVideo.length;
-    const completedVideoSurveys = surveysPerVideo.filter(
-      (s) => s.completed
-    ).length;
+    const completedVideoSurveys = surveysPerVideo.filter((s) => s.completed).length;
 
     // 6 ay sonrası
     const followupSurvey =
       allSurveys.find((s) => s.type === "FOLLOWUP") || null;
+
     const followupResponse = followupSurvey
       ? surveyResponses.find((r) => r.surveyId === followupSurvey.id)
       : null;
@@ -104,16 +116,14 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-      email,
+      // ✅ istersen claim değil gerçek email dönelim:
+      email: user.email,
+
       videos: {
         total: videos.length,
         completed: completedCount,
         nextVideo: nextVideo
-          ? {
-              id: nextVideo.id,
-              order: nextVideo.order,
-              title: nextVideo.title,
-            }
+          ? { id: nextVideo.id, order: nextVideo.order, title: nextVideo.title }
           : null,
       },
       surveys: {

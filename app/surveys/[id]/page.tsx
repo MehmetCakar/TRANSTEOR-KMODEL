@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 
 type Option = {
   id: string;
@@ -16,26 +17,34 @@ type Question = {
   options: Option[];
 };
 
-export default function SurveyPage({ params }: { params: { id: string } }) {
+export default function SurveyPage() {
+  const params = useParams<{ id: string }>();
+  const surveyId = params?.id;
+
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/surveys/${params.id}`)
+    if (!surveyId) return;
+
+    fetch(`/api/surveys/${surveyId}`)
       .then((r) => r.json())
       .then((json) => {
-        setQuestions(json.survey.questions);
+        setQuestions(json.survey.questions || []);
         setLoading(false);
-      });
-  }, [params.id]);
+      })
+      .catch(() => setLoading(false));
+  }, [surveyId]);
 
   function selectOption(questionId: string, optionId: string) {
     setAnswers((prev) => ({ ...prev, [questionId]: optionId }));
   }
 
   async function submitSurvey() {
+    if (!surveyId) return;
+
     const payload = {
       answers: Object.entries(answers).map(([questionId, optionId]) => ({
         questionId,
@@ -43,7 +52,7 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
       })),
     };
 
-    const res = await fetch(`/api/surveys/${params.id}/submit`, {
+    const res = await fetch(`/api/surveys/${surveyId}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

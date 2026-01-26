@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
                 .map((o, j) => ({
                   order: Number(o?.order ?? j + 1),
                   text: String(o?.text ?? "").trim(),
-                  isCorrect: Boolean(o?.isCorrect),
+                  isCorrect: o?.isCorrect === true || o?.isCorrect === "true",
                 }))
                 .filter(o => o.text.length > 0)
             : [],
@@ -46,7 +46,9 @@ export async function POST(req: NextRequest) {
   if (type === "VIDEO" && !videoId) {
     return NextResponse.json({ error: "VIDEO anketi için videoId zorunlu" }, { status: 400 });
   }
-
+  if (questions.length === 0) {
+    return NextResponse.json({ error: "en az bir soru eklemelisiniz" }, { status: 400 });
+  }
   // basit validasyon: her soruda en az 2 şık + 1 doğru
   for (const q of questions) {
     if (q.options.length < 2) {
@@ -95,4 +97,17 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({ ok: true, survey: created });
+}
+
+export async function GET(req: NextRequest) {
+  const guard = await requireAdmin(req);
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
+
+  const surveys = await prisma.survey.findMany({
+    where: { isActive: true, type: "VIDEO" },
+    select: { id: true, videoId: true, title: true, type: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return NextResponse.json({ surveys });
 }

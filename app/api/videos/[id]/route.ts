@@ -20,7 +20,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params; // ← Next 15 Promise olayı
+  const { id } = await params; //  unwrap
 
   const user = await getUserFromRequest(req);
   if (!user) {

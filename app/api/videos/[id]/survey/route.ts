@@ -6,9 +6,8 @@ import { parseJWT } from "@/lib/jwt";
 async function getUserFromRequest(req: NextRequest) {
   const token = req.cookies.get("access_token")?.value;
   if (!token) return null;
-
   try {
-    const email = parseJWT(token); // string dönmeli
+    const email = parseJWT(token);
     return await prisma.user.findUnique({ where: { email } });
   } catch {
     return null;
@@ -17,12 +16,15 @@ async function getUserFromRequest(req: NextRequest) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // ✅ params Promise
 ) {
-  const videoId = params.id;
+  const { id } = await params; // ✅ unwrap
+  const videoId = id;
 
   const user = await getUserFromRequest(req);
-  if (!user) return NextResponse.json({ error: "no auth" }, { status: 401 });
+  if (!user) {
+    return NextResponse.json({ error: "no auth" }, { status: 401 });
+  }
 
   const video = await prisma.video.findUnique({ where: { id: videoId } });
   if (!video || !video.isActive) {
@@ -32,7 +34,6 @@ export async function GET(
   // Bu videoya bağlı VIDEO tipi anket var mı?
   const survey = await prisma.survey.findFirst({
     where: { type: "VIDEO", isActive: true, videoId },
-    select: { id: true },
   });
 
   if (!survey) {
@@ -41,7 +42,6 @@ export async function GET(
 
   const response = await prisma.surveyResponse.findFirst({
     where: { userId: user.id, surveyId: survey.id },
-    select: { id: true },
   });
 
   return NextResponse.json({

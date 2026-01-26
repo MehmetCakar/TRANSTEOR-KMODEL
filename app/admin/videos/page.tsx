@@ -1,3 +1,4 @@
+// app/admin/videos/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";

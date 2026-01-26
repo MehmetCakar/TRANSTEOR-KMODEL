@@ -180,7 +180,7 @@ export default function SurveysPage() {
                   } else if (item.completed) {
                     action = (
                       <a
-                        href={`/survey/${item.surveyId}`}
+                        href={`/surveys/${item.surveyId}`}
                         style={{ fontSize: "0.8rem" }}
                       >
                         Cevapları gör ↗
@@ -189,7 +189,7 @@ export default function SurveysPage() {
                   } else {
                     action = (
                       <a
-                        href={`/survey/${item.surveyId}`}
+                        href={`/surveys/${item.surveyId}`}
                         style={{ fontSize: "0.8rem" }}
                       >
                         Ankete başla ↗

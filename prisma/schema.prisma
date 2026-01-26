@@ -25,7 +25,7 @@ model User {
 
 model Video {
   id              String          @id @default(cuid())
-  order           Int
+  order           Int             @unique
   title           String
   description     String?
   url             String

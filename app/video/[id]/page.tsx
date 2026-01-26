@@ -30,6 +30,9 @@ export default function VideoPage() {
   const [error, setError] = useState<string | null>(null);
 
   const endedOnceRef = useRef(false);
+  const videoUrl = data?.video.url || "";
+  const ytEmbed = isYouTubeUrl(videoUrl) ? toYouTubeEmbed(videoUrl) : null;
+
 
   useEffect(() => {
     if (!videoId) {
@@ -55,6 +58,36 @@ export default function VideoPage() {
     })();
   }, [videoId]);
 
+  function toYouTubeEmbed(url: string) {
+    try {
+      // Zaten embed ise bırak
+      if (url.includes("youtube.com/embed/")) return url;
+
+      const u = new URL(url);
+
+      // youtu.be/<id>
+      if (u.hostname.includes("youtu.be")) {
+        const id = u.pathname.replace("/", "").trim();
+        return id ? `https://www.youtube.com/embed/${id}` : null;
+      }
+
+      // youtube.com/watch?v=<id>
+      if (u.hostname.includes("youtube.com")) {
+        const id = u.searchParams.get("v");
+        return id ? `https://www.youtube.com/embed/${id}` : null;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function isYouTubeUrl(url?: string | null) {
+    if (!url) return false;
+    return url.includes("youtube.com") || url.includes("youtu.be");
+  }
+
   async function handleComplete() {
     if (!videoId || !data) return;
     if (saving) return;
@@ -71,7 +104,7 @@ export default function VideoPage() {
       const json = await res.json();
 
       if (json.surveyId && !json.alreadyFilled) {
-        router.push(`/survey/${json.surveyId}`);
+        router.push(`/surveys/${json.surveyId}`);
       } else {
         router.push("/dashboard");
       }
@@ -152,17 +185,29 @@ export default function VideoPage() {
 
         <div className="video-layout">
           <section className="video-card">
-            <div className="video-player-wrapper">
+                  
+          <div className="video-player-wrapper">
+            {ytEmbed ? (
+              <iframe
+                className="video-player"
+                src={ytEmbed}
+                title={data.video.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                style={{ width: "100%", height: "100%", border: 0 }}
+              />
+            ) : (
               <video
                 className="video-player"
-                src={data.video.url || undefined}
+                src={videoUrl || undefined}
                 controls
                 controlsList="nodownload"
-                onEnded={handleEnded} // ✅ EKLENDİ
+                onEnded={handleEnded}
               >
                 Tarayıcınız video oynatmayı desteklemiyor.
               </video>
-            </div>
+            )}
+          </div>
 
             {data.video.description && <p className="video-description">{data.video.description}</p>}
           </section>
