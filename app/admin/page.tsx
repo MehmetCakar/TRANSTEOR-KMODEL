@@ -1,114 +1,130 @@
 // app/admin/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Opt = { text: string; isCorrect: boolean };
 type Q = { text: string; options: Opt[] };
 
-const NEW_VIDEO = "__new__";
+function isYouTubeUrl(url?: string | null) {
+  if (!url) return false;
+  return url.includes("youtube.com") || url.includes("youtu.be");
+}
+
+
+
+function toYouTubeEmbed(input: string) {
+  try {
+    const url = new URL(input);
+
+    // zaten embed
+    if (url.hostname.includes("youtube.com") && url.pathname.startsWith("/embed/")) {
+      return input;
+    }
+
+    // youtu.be/<id>
+    if (url.hostname.includes("youtu.be")) {
+      const id = url.pathname.split("/").filter(Boolean)[0];
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+
+    if (url.hostname.includes("youtube.com")) {
+      // watch?v=<id>
+      if (url.pathname === "/watch") {
+        const id = url.searchParams.get("v");
+        return id ? `https://www.youtube.com/embed/${id}` : null;
+      }
+
+      const parts = url.pathname.split("/").filter(Boolean);
+
+      // /embed/<id>
+      const embedIdx = parts.indexOf("embed");
+      if (embedIdx >= 0 && parts[embedIdx + 1]) return `https://www.youtube.com/embed/${parts[embedIdx + 1]}`;
+
+      // /shorts/<id>
+      const shortsIdx = parts.indexOf("shorts");
+      if (shortsIdx >= 0 && parts[shortsIdx + 1]) return `https://www.youtube.com/embed/${parts[shortsIdx + 1]}`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function AdminPage() {
   const [videos, setVideos] = useState<any[]>([]);
   const [msg, setMsg] = useState<string>("");
 
   // video form state
-  const [selectedVideoId, setSelectedVideoId] = useState<string>(NEW_VIDEO);
+  const [selectedVideoId, setSelectedVideoId] = useState<string>("");
   const [order, setOrder] = useState<number>(1);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
-  const [durationSeconds, setDurationSeconds] = useState<number>(60);
+  const [durationSeconds, setDurationSeconds] = useState<number | "">("");
   const [description, setDescription] = useState("");
 
   // survey state
   const [editingSurveyId, setEditingSurveyId] = useState<string | null>(null);
   const [videoSurveyMap, setVideoSurveyMap] = useState<Record<string, string>>({});
-
   const [surveyTitle, setSurveyTitle] = useState("");
   const [surveyType, setSurveyType] = useState<"VIDEO" | "FOLLOWUP">("VIDEO");
   const [surveyVideoId, setSurveyVideoId] = useState<string>("");
 
+    // Yeni video mu?
+  const isNew = selectedVideoId === "_new_";
+
+  // Ekranda gösterilecek bölüm no
+  const displayOrder = isNew
+    ? (videos.reduce((m, v) => Math.max(m, Number(v.order || 0)), 0) + 1)
+    : (videos.find((v) => v.id === selectedVideoId)?.order ?? order);
+
   const makeQuestion = (): Q => ({
     text: "",
     options: [
-      { text: "", isCorrect: true }, // default: 1. şık doğru
+      { text: "", isCorrect: true },
       { text: "", isCorrect: false },
       { text: "", isCorrect: false },
       { text: "", isCorrect: false },
     ],
   });
-
   const [questions, setQuestions] = useState<Q[]>([makeQuestion()]);
 
-  function resetVideoFormForNew(list: any[]) {
-    const maxOrder = list.reduce(
-      (m: number, v: any) => Math.max(m, Number(v.order || 0)),
-      0
-    );
-    setSelectedVideoId(NEW_VIDEO);
-    setOrder(maxOrder + 1);
-    setTitle("");
-    setUrl("");
-    setDurationSeconds(60);
-    setDescription("");
-  }
-
-  function fillVideoForm(v: any) {
-    setSelectedVideoId(v.id);
-    setOrder(Number(v.order || 1));
-    setTitle(v.title || "");
-    setUrl(v.url || "");
-    setDurationSeconds(Number(v.durationSeconds || 60));
-    setDescription(v.description || "");
-  }
+  const ytPreview = useMemo(() => {
+    if (!url) return null;
+    if (!isYouTubeUrl(url)) return null;
+    return toYouTubeEmbed(url);
+  }, [url]);
 
   async function loadVideos() {
-    const res = await fetch("/api/admin/videos");
-    const json = await res.json();
-
+    setMsg("");
+    const res = await fetch("/api/admin/videos", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       setMsg(json.error || "Videolar alınamadı (admin misin?)");
-      setVideos([]);
-      return [];
+      return;
     }
 
     const list = json.videos || [];
     setVideos(list);
 
-    // ilk açılışta ya da DB reset sonrası: video yoksa -> new mod
-    if (!list.length) {
-      resetVideoFormForNew(list);
-      if (!surveyVideoId) setSurveyVideoId("");
-      return list;
-    }
-
-    // survey video default (ilk video)
-    if (!surveyVideoId) setSurveyVideoId(list[0].id);
-
-    // seçili video artık yoksa (DB reset vs) -> new mod
-    if (selectedVideoId !== NEW_VIDEO && !list.some((v: any) => v.id === selectedVideoId)) {
-      resetVideoFormForNew(list);
-      return list;
-    }
-
-    // sayfa ilk açıldığında new modda kalsın, ama order’u max+1 yap
-    if (selectedVideoId === NEW_VIDEO) {
+    // ilk açılışta: yeni video moduna geç
+    if (!selectedVideoId) {
+      setSelectedVideoId("__new__");
       const maxOrder = list.reduce((m: number, v: any) => Math.max(m, Number(v.order || 0)), 0);
       setOrder(maxOrder + 1);
-      return list;
+      setTitle("");
+      setUrl("");
+      setDurationSeconds("");
+      setDescription("");
+      if (!surveyVideoId && list?.[0]?.id) setSurveyVideoId(list[0].id);
     }
-
-    // seçili videoyu tekrar forma bas (güncel olsun)
-    const current = list.find((v: any) => v.id === selectedVideoId);
-    if (current) fillVideoForm(current);
-
-    return list;
   }
 
   async function loadVideoSurveyMap() {
-    const res = await fetch("/api/admin/surveys");
-    const json = await res.json();
-    if (!res.ok) return {};
+    const res = await fetch("/api/admin/surveys", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return;
 
     const list = json?.surveys ?? [];
     const map: Record<string, string> = {};
@@ -116,30 +132,57 @@ export default function AdminPage() {
       if (s.videoId) map[s.videoId] = s.id;
     }
     setVideoSurveyMap(map);
-    return map;
+  }
+
+  async function resolveYouTube() {
+    const input = url?.trim();
+    if (!input) return;
+
+    setMsg("");
+    try {
+      const res = await fetch(`/api/admin/youtube/resolve?url=${encodeURIComponent(input)}`, {
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setMsg(json?.error || "Süre çekilemedi");
+        return;
+      }
+
+      // duration
+      if (typeof json.durationSeconds === "number") {
+        setDurationSeconds(json.durationSeconds);
+      }
+
+      // URL'i embed'e çek (istersen DB'ye embed kaydediyorsun)
+      if (json.embedUrl) {
+        setUrl(String(json.embedUrl));
+      }
+
+      // Title sadece boşsa doldur
+      if (!title.trim() && json.title) {
+        setTitle(String(json.title));
+      }
+
+      setMsg("✅ YouTube süresi otomatik alındı");
+    } catch (e: any) {
+      setMsg(e?.message || "Süre çekilemedi");
+    }
   }
 
   async function loadSurveyForVideo(videoId: string) {
-    // videoId boşsa (video yoksa) formu temizle
-    if (!videoId) {
-      setEditingSurveyId(null);
-      setSurveyTitle("");
-      setQuestions([makeQuestion()]);
-      return;
-    }
-
     const sid = videoSurveyMap[videoId];
-
     if (!sid) {
-      // bu videoda survey yoksa, yeni oluşturma moduna dön
       setEditingSurveyId(null);
       setSurveyTitle("");
       setQuestions([makeQuestion()]);
       return;
     }
 
-    const res = await fetch(`/api/admin/surveys/${sid}`);
-    const json = await res.json();
+    const res = await fetch(`/api/admin/surveys/${sid}`, { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
     if (!res.ok) return setMsg(json.error || "Survey yüklenemedi");
 
     const s = json.survey;
@@ -163,31 +206,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     (async () => {
-      // admin değilse dashboard'a at
+      await loadVideos();
+      await loadVideoSurveyMap();
+    })();
+
+    (async () => {
       const r = await fetch("/api/admin/videos");
-      if (r.status === 401 || r.status === 403) {
-        window.location.href = "/dashboard";
-        return;
-      }
-
-      // normal yükleme
-      const list = await loadVideos();
-      const map = await loadVideoSurveyMap();
-
-      // VIDEO modunda default olarak ilk video seçiliyse ve onun survey'i varsa yükle
-      const defaultVideoId = (surveyVideoId || list?.[0]?.id) ?? "";
-      if (defaultVideoId) {
-        setSurveyVideoId(defaultVideoId);
-        // map state'i async set ediliyor, burada local map ile karar verelim:
-        const sid = map?.[defaultVideoId];
-        if (sid) {
-          // state'deki videoSurveyMap henüz set edilmeden de çağırabilmek için
-          // geçici olarak loadSurveyForVideo çağıracağız ama o state'e bakıyor;
-          // bu yüzden önce set edip sonra mikro-task
-          setVideoSurveyMap(map);
-          queueMicrotask(() => loadSurveyForVideo(defaultVideoId));
-        }
-      }
+      if (r.status === 401 || r.status === 403) window.location.href = "/dashboard";
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -196,60 +221,66 @@ export default function AdminPage() {
     setMsg("");
 
     const payload = {
-      order,
       title: title.trim(),
       url: url.trim(),
-      durationSeconds,
-      description: description ? String(description) : "",
+      durationSeconds: Number(durationSeconds || 0),
+      description: description ? description : null,
     };
 
-    if (!payload.title) return setMsg("Title zorunlu");
-    if (!payload.url) return setMsg("Video URL zorunlu");
-    if (!payload.durationSeconds || payload.durationSeconds <= 0) return setMsg("Duration Seconds zorunlu");
+    if ( !payload.title || !payload.url || !payload.durationSeconds) {
+      return setMsg("title, url, durationSeconds zorunlu");
+    }
 
-    const isNew = selectedVideoId === NEW_VIDEO;
+    // ✅ youtube link kabul, sadece ufak uyarı
+    if (isYouTubeUrl(payload.url)) {
+      const emb = toYouTubeEmbed(payload.url);
+      if (!emb) return setMsg("YouTube linki geçersiz görünüyor (watch?v=... / youtu.be / embed / shorts)");
+      payload.url = emb; // ✅ DB'ye embed kaydet
+    }
 
-    const res = await fetch(isNew ? "/api/admin/videos" : `/api/admin/videos/${selectedVideoId}`, {
-      method: isNew ? "POST" : "PATCH",
+    // Yeni video
+    if (selectedVideoId === "__new__" || !selectedVideoId) {
+      const res = await fetch("/api/admin/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return setMsg(json.error || "Video eklenemedi");
+
+      setMsg("✅ Video eklendi");
+      await loadVideos();
+      if (json?.video?.id) setSelectedVideoId(json.video.id);
+      return;
+    }
+
+    // Var olanı güncelle
+    const res = await fetch(`/api/admin/videos/${selectedVideoId}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return setMsg(json.error || "Video güncellenemedi");
 
-    const json = await res.json();
-    if (!res.ok) return setMsg(json.error || "Video kaydedilemedi");
-
-    setMsg(isNew ? "✅ Video eklendi" : "✅ Video güncellendi");
-
-    const list = await loadVideos();
-
-    // yeni eklendiyse otomatik seç
-    if (isNew && json?.video?.id) {
-      const created = list.find((v: any) => v.id === json.video.id);
-      if (created) fillVideoForm(created);
-      else setSelectedVideoId(json.video.id);
-    }
+    setMsg("✅ Video güncellendi");
+    await loadVideos();
   }
 
   async function saveSurvey() {
     setMsg("");
-
     if (!surveyTitle.trim()) return setMsg("Survey Title zorunlu");
-    if (surveyType === "VIDEO" && !surveyVideoId) return setMsg("VIDEO survey için bölüm seçmelisin");
 
-    // UI validasyon: her soru için en az 2 dolu şık + tam 1 doğru
+    // UI validasyon
     for (let qi = 0; qi < questions.length; qi++) {
       const q = questions[qi];
       const qText = q.text.trim();
       if (!qText) continue;
 
       const nonEmptyOptions = q.options.filter((o) => o.text.trim().length > 0);
-      if (nonEmptyOptions.length < 2) {
-        return setMsg(`Soru ${qi + 1}: En az 2 dolu şık girmen lazım`);
-      }
+      if (nonEmptyOptions.length < 2) return setMsg(`Soru ${qi + 1}: En az 2 dolu şık girmen lazım`);
       const correctCount = nonEmptyOptions.filter((o) => o.isCorrect).length;
-      if (correctCount !== 1) {
-        return setMsg(`Soru ${qi + 1}: Tam 1 doğru şık seçmelisin`);
-      }
+      if (correctCount !== 1) return setMsg(`Soru ${qi + 1}: Tam 1 doğru şık seçmelisin`);
     }
 
     const cleanedQuestions = questions
@@ -281,40 +312,31 @@ export default function AdminPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
     if (!res.ok) return setMsg(json.error || "Survey eklenemedi");
 
-    setMsg(editingSurveyId ? "✅ Survey güncellendi" : "✅ Survey eklendi");
-
-    // map'i güncelle ve seçili videonun survey'ini tekrar yükle (sync olsun)
+    setMsg("✅ Survey kaydedildi");
     await loadVideoSurveyMap();
-    if (surveyType === "VIDEO" && surveyVideoId) {
-      // yeni oluşturduysak id'yi endpoint dönüyor olabilir; ama map zaten yenilendi
-      await loadSurveyForVideo(surveyVideoId);
-    } else {
-      // followup ise formu temizle
-      setEditingSurveyId(null);
-      setSurveyTitle("");
-      setQuestions([makeQuestion()]);
-    }
   }
-
-  const sortedVideos = videos.slice().sort((a, b) => a.order - b.order);
-  const videoSelectDisabled = sortedVideos.length === 0;
 
   return (
     <div className="app-shell">
       <main className="app-main">
         <section className="dashboard-card">
           <h1>Admin Panel</h1>
-          {msg && <p style={{ marginTop: 8, color: "#b91c1c" }}>{msg}</p>}
+          {msg && <p style={{ marginTop: 8, color: "#b91c1c" }}>{msg}</p>}          
         </section>
+
+        <div style={{ marginTop: 10, textAlign: "right" }}>
+          <a href="/admin/reports" className="survey-link" style={{ fontSize: "0.9rem" }}>
+            Raporlar ↗️
+          </a>
+        </div>
 
         <section className="dashboard-grid" style={{ marginTop: 16 }}>
           {/* VIDEO */}
           <article className="dashboard-card">
-            <h2>Video Ekle</h2>
+            <h2>Video Ekle / Düzenle</h2>
 
             <select
               value={selectedVideoId}
@@ -322,67 +344,90 @@ export default function AdminPage() {
                 const id = e.target.value;
                 setSelectedVideoId(id);
 
-                if (id === NEW_VIDEO) {
-                  resetVideoFormForNew(sortedVideos);
+                if (id === "__new__") {
+                  const maxOrder = videos.reduce((m, v) => Math.max(m, Number(v.order || 0)), 0);
+                  setOrder(maxOrder + 1);
+                  setTitle("");
+                  setUrl("");
+                  setDurationSeconds(60);
+                  setDescription("");
                   return;
                 }
 
-                const v = sortedVideos.find((x: any) => x.id === id);
-                if (v) fillVideoForm(v);
+                const v = videos.find((x) => x.id === id);
+                if (!v) return;
+                setOrder(v.order);
+                setTitle(v.title || "");
+                setUrl(v.url || "");
+                setDurationSeconds(v.durationSeconds || 60);
+                setDescription(v.description || "");
               }}
             >
-              <option value={NEW_VIDEO}>+ Yeni video ekle</option>
-              {sortedVideos.map((v: any) => (
-                <option key={v.id} value={v.id}>
-                  Bölüm {v.order} - {v.title}
-                </option>
-              ))}
+              <option value="__new__">+ Yeni video ekle</option>
+              {videos
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    Bölüm {v.order} - {v.title}
+                  </option>
+                ))}
             </select>
 
             <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-              <input value={order} onChange={(e) => setOrder(Number(e.target.value))} placeholder="Order" />
+              {/* ✅ order input yok */}
+              <div style={{ fontSize: 13, opacity: 0.8 }}>
+                <b>Bölüm No:</b> {displayOrder} {isNew ? "(otomatik)" : ""}
+              </div>
+
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
-              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Video URL" />
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Video URL (YouTube watch / youtu.be / embed)"
+              />
               <input
                 value={durationSeconds}
-                onChange={(e) => setDurationSeconds(Number(e.target.value))}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDurationSeconds(v === "" ? "" : Number(v));
+                }}
                 placeholder="Duration Seconds"
               />
+              <button type="button" className="dashboard-primary-btn" onClick={resolveYouTube}>
+                YouTube Süresini Getir
+              </button>
+
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description (optional)"
               />
+              {/* küçük preview */}
+              {ytPreview && (
+                <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(0,0,0,0.08)" }}>
+                  <iframe
+                    src={ytPreview}
+                    title="preview"
+                    style={{ width: "100%", aspectRatio: "16/9", border: 0 }}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              )}
 
               <button className="dashboard-primary-btn" type="button" onClick={saveVideo}>
-                {selectedVideoId === NEW_VIDEO ? "Video oluştur" : "Video güncelle"}
+                {isNew ? "Video Oluştur" : "Video Güncelle"}
               </button>
             </div>
           </article>
 
           {/* SURVEY */}
           <article className="dashboard-card">
-            <h2>Survey Ekle</h2>
+            <h2>Survey Ekle / Güncelle</h2>
 
             <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-              <select
-                value={surveyType}
-                onChange={(e) => {
-                  const t = e.target.value as any;
-                  setSurveyType(t);
-
-                  // FOLLOWUP seçilince video seçimini sıfırla
-                  if (t === "FOLLOWUP") {
-                    setSurveyVideoId("");
-                    setEditingSurveyId(null);
-                    setSurveyTitle("");
-                    setQuestions([makeQuestion()]);
-                  } else {
-                    // VIDEO'ya dönünce ilk video varsa seç
-                    if (!surveyVideoId && sortedVideos[0]?.id) setSurveyVideoId(sortedVideos[0].id);
-                  }
-                }}
-              >
+              <select value={surveyType} onChange={(e) => setSurveyType(e.target.value as any)}>
                 <option value="VIDEO">VIDEO (video sonu)</option>
                 <option value="FOLLOWUP">FOLLOWUP (6 ay sonrası)</option>
               </select>
@@ -397,17 +442,12 @@ export default function AdminPage() {
                     setSurveyVideoId(vid);
                     loadSurveyForVideo(vid);
                   }}
-                  disabled={videoSelectDisabled}
                 >
-                  {videoSelectDisabled ? (
-                    <option value="">Önce video eklemelisin</option>
-                  ) : (
-                    sortedVideos.map((v: any) => (
-                      <option key={v.id} value={v.id}>
-                        Bölüm {v.order} - {v.title}
-                      </option>
-                    ))
-                  )}
+                  {videos.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      Bölüm {v.order} - {v.title}
+                    </option>
+                  ))}
                 </select>
               )}
 
@@ -495,7 +535,6 @@ export default function AdminPage() {
                         + Şık ekle
                       </button>
                     )}
-
                     {q.options.length > 2 && (
                       <button
                         type="button"

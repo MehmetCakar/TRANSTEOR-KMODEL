@@ -43,6 +43,7 @@ export default function DashboardPage() {
     try {
       await fetch("/api/logout", { method: "POST" });
       router.push("/login");
+      router.refresh();
     } catch (e) {
       console.error(e);
       alert("Çıkış yapılırken bir hata oluştu.");

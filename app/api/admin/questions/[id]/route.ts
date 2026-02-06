@@ -2,13 +2,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { error } from "console";
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const r = await requireAdmin(req);
-  if (!r.ok) return r.res;
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
@@ -29,7 +30,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const r = await requireAdmin(req);
-  if (!r.ok) return r.res;
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
 
   const { id } = await params;
 

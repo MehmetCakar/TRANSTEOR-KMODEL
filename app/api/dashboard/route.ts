@@ -21,18 +21,12 @@ export async function GET(req: NextRequest) {
     // ✅ kullanıcıyı hem id hem email ile bul
     const user = await prisma.user.findFirst({
       where: {
-        OR: [
-          { id: claim },
-          { email: claim.toLowerCase() },
-        ],
+        OR: [{ id: claim }, { email: claim.toLowerCase() }],
       },
     });
 
     if (!user) {
-      return NextResponse.json(
-        { error: "user not found", tokenClaim: claim },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "user not found", tokenClaim: claim }, { status: 404 });
     }
 
     // 1) Videolar + ilerleme
@@ -51,14 +45,6 @@ export async function GET(req: NextRequest) {
     });
 
     const completedCount = progresses.filter((p) => p.isCompleted).length;
-
-    const nextVideo =
-      videos.find(
-        (v) =>
-          !progresses.some(
-            (p) => p.videoId === v.id && p.isCompleted === true
-          )
-      ) || null;
 
     const lastCompleted = await prisma.videoProgress.findFirst({
       where: { userId: user.id, isCompleted: true },
@@ -81,9 +67,8 @@ export async function GET(req: NextRequest) {
 
     const surveysPerVideo = videos.map((video) => {
       const survey = videoSurveys.find((s) => s.videoId === video.id) || null;
-      const response = survey
-        ? surveyResponses.find((r) => r.surveyId === survey.id)
-        : null;
+      const response = survey ? surveyResponses.find((r) => r.surveyId === survey.id) : null;
+
       const prog = progresses.find((p) => p.videoId === video.id);
       const videoCompleted = !!prog?.isCompleted;
 
@@ -93,16 +78,27 @@ export async function GET(req: NextRequest) {
         surveyId: survey?.id ?? null,
         title: survey?.title ?? null,
         completed: !!response, // anket dolduruldu mu
-        videoCompleted,        // ilgili video bitti mi
+        videoCompleted, // video tamamlandı mı
       };
     });
 
     const totalVideoSurveys = surveysPerVideo.length;
     const completedVideoSurveys = surveysPerVideo.filter((s) => s.completed).length;
 
-    // 6 ay sonrası
-    const followupSurvey =
-      allSurveys.find((s) => s.type === "FOLLOWUP") || null;
+    // ✅ unlock kuralı: videoCompleted OR surveyCompleted
+    const isUnlocked = (videoId: string) => {
+      const progDone = progresses.some((p) => p.videoId === videoId && p.isCompleted === true);
+      const surveyDone = surveysPerVideo.some((x) => x.videoId === videoId && x.completed === true);
+      return progDone || surveyDone;
+    };
+
+    const nextVideo =
+      videos.find((v) => !isUnlocked(v.id)) || null;
+
+    const unlockedCount = videos.filter((v) => isUnlocked(v.id)).length;
+
+    // 6 ay sonrası followup
+    const followupSurvey = allSurveys.find((s) => s.type === "FOLLOWUP") || null;
 
     const followupResponse = followupSurvey
       ? surveyResponses.find((r) => r.surveyId === followupSurvey.id)
@@ -116,16 +112,20 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-      // ✅ istersen claim değil gerçek email dönelim:
       email: user.email,
 
       videos: {
         total: videos.length,
-        completed: completedCount,
-        nextVideo: nextVideo
-          ? { id: nextVideo.id, order: nextVideo.order, title: nextVideo.title }
-          : null,
+
+        // ✅ UI için "ilerleme" (survey doldurulunca da ilerlesin)
+        completed: unlockedCount,
+
+        // ekstra debug/analytics için (istersen UI’da göstermeyebilirsin)
+        completedStrict: completedCount, // sadece gerçek video tamamlanan
+
+        nextVideo: nextVideo ? { id: nextVideo.id, order: nextVideo.order, title: nextVideo.title } : null,
       },
+
       surveys: {
         perVideo: {
           items: surveysPerVideo,
@@ -142,9 +142,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error(err);
-    return NextResponse.json(
-      { error: err?.message || "internal error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err?.message || "internal error" }, { status: 500 });
   }
 }

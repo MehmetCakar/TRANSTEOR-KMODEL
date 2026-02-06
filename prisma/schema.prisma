@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -21,6 +20,7 @@ model User {
   sessions              Session[]
   surveyResponses       SurveyResponse[]
   progresses            VideoProgress[]
+  videoWatches          VideoWatch[]
 }
 
 model Video {
@@ -33,6 +33,7 @@ model Video {
   isActive        Boolean         @default(true)
   survey          Survey?         @relation("VideoSurvey")
   progresses      VideoProgress[]
+  videoWatches    VideoWatch[]
 }
 
 model VideoProgress {
@@ -49,6 +50,22 @@ model VideoProgress {
   @@unique([userId, videoId])
 }
 
+model VideoWatch {
+  id              String   @id @default(cuid())
+  userId          String
+  videoId         String
+  watchedSeconds  Int      @default(0)
+  lastPositionSec Int      @default(0)
+  isCompleted     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id])
+  video Video @relation(fields: [videoId], references: [id])
+
+  @@unique([userId, videoId])
+}
+
 model Survey {
   id        String           @id @default(cuid())
   title     String
@@ -60,9 +77,6 @@ model Survey {
   questions SurveyQuestion[]
   responses SurveyResponse[]
 }
-
-
-
 
 model SurveyResponse {
   id        String   @id @default(cuid())
@@ -98,28 +112,29 @@ enum SurveyType {
   FOLLOWUP
   VIDEO
 }
+
 model SurveyQuestion {
-  id        String        @id @default(cuid())
-  surveyId  String
-  order     Int
-  text      String
+  id       String @id @default(cuid())
+  surveyId String
+  order    Int
+  text     String
 
-  survey    Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-  options   SurveyOption[]
+  survey  Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  options SurveyOption[]
 
-  @@index([surveyId])
   @@unique([surveyId, order])
+  @@index([surveyId])
 }
 
 model SurveyOption {
-  id          String  @id @default(cuid())
-  questionId  String
-  order       Int
-  text        String
-  isCorrect   Boolean @default(false)
+  id         String  @id @default(cuid())
+  questionId String
+  order      Int
+  text       String
+  isCorrect  Boolean @default(false)
 
-  question    SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
-  @@index([questionId])
   @@unique([questionId, order])
+  @@index([questionId])
 }

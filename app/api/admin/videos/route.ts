@@ -17,22 +17,25 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
 
-  const order = Number(body?.order);
   const title = String(body?.title ?? "").trim();
   const description = body?.description ? String(body.description) : null;
   const url = String(body?.url ?? "").trim();
   const durationSeconds = Number(body?.durationSeconds);
   const isActive = body?.isActive !== false;
 
-  if (!order || !title || !url || !durationSeconds) {
+  if (!title || !url || !durationSeconds) {
     return NextResponse.json(
-      { error: "order, title, url, durationSeconds zorunlu" },
+      { error: "title, url, durationSeconds zorunlu" },
       { status: 400 }
     );
   }
 
+  // ✅ order otomatik: max(order)+1
+  const last = await prisma.video.findFirst({ orderBy: { order: "desc" }, select: { order: true } });
+  const nextOrder = (last?.order ?? 0) + 1;
+
   const created = await prisma.video.create({
-    data: { order, title, description, url, durationSeconds, isActive },
+    data: { order: nextOrder, title, description, url, durationSeconds, isActive },
   });
 
   return NextResponse.json({ ok: true, video: created });
