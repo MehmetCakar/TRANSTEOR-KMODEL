@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "invalid token" }, { status: 401 });
     }
 
-    //  kullanıcıyı hem id hem email ile bul
     const user = await prisma.user.findFirst({
       where: {
         OR: [{ id: claim }, { email: claim.toLowerCase() }],
@@ -27,7 +26,8 @@ export async function GET(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "user not found", tokenClaim: claim }, { status: 404 });
-    }
+    }   
+
 
     // 1) Videolar + ilerleme
     const videos = await prisma.video.findMany({
@@ -78,6 +78,20 @@ export async function GET(req: NextRequest) {
     const surveyResponses = await prisma.surveyResponse.findMany({
       where: { userId: user.id },
     });
+
+    // 🔹 Kullanıcının doldurduğu TÜM survey geçmişi (VIDEO + FOLLOWUP)
+    const surveyHistory = surveyResponses.map((r) => {
+      const s = allSurveys.find((x) => x.id === r.surveyId);
+      if (!s) return null;
+
+      return {
+        surveyId: s.id,
+        title: s.title,
+        type: s.type, // VIDEO | FOLLOWUP
+        videoId: s.videoId ?? null,
+        answeredAt: r.createdAt?.toISOString?.() ?? null,
+      };
+    }).filter(Boolean);
 
     const videoSurveys = allSurveys.filter((s) => s.type === "VIDEO");
 
@@ -175,6 +189,7 @@ export async function GET(req: NextRequest) {
             triggered: !!lastVideoProgress?.startedAt,   
             triggeredByVideo: lastVideo?.order ?? null,
           },
+          history: surveyHistory, // tüm doldurulan anketlerin geçmişi 
         },
 
         changeStages: {

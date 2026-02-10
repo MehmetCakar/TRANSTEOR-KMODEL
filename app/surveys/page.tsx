@@ -2,15 +2,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 type PerVideoSurveyItem = {
   videoId: string;
   order: number;
   surveyId: string | null;
   title: string | null;
-  completed: boolean;
-  videoCompleted: boolean;
+  completed: boolean;      // survey completed
+  videoCompleted: boolean; // video completed
 };
 
 type DashboardData = {
@@ -24,6 +24,8 @@ type DashboardData = {
       surveyId: string | null;
       needed: boolean;
       title: string | null;
+      completed?: boolean; // ✅ bunu ekliyoruz
+      availableAt?: string | null; // opsiyonel
     };
   };
 };
@@ -37,11 +39,10 @@ export default function SurveysPage() {
   useEffect(() => {
     (async () => {
       try {
-        // Aynı dashboard API’sini kullanıyoruz
-        const res = await fetch("/api/dashboard");
-        const json = await res.json();
-        if (!res.ok) setError(json.error || "Bir hata oluştu");
-        else setData(json);
+        const res = await fetch("/api/dashboard", { cache: "no-store" });
+        const j = await res.json();
+        if (!res.ok) setError(j.error || "Bir hata oluştu");
+        else setData(j);
       } catch (e: any) {
         setError(e.message || "Bir hata oluştu");
       } finally {
@@ -69,9 +70,12 @@ export default function SurveysPage() {
     );
   }
 
-  const items =
-    data.surveys?.perVideo?.items?.slice().sort((a, b) => a.order - b.order) ??
-    [];
+  const items = data?.surveys?.perVideo?.items ?? [];
+  const followup = data?.surveys?.followup ?? null;
+
+  const followupSurveyId = followup?.surveyId ?? null;
+  const followupNeeded = followup?.needed ?? false;
+  const followupCompleted = followup?.completed ?? false;
 
   return (
     <div className="app-shell">
@@ -79,57 +83,39 @@ export default function SurveysPage() {
         <section className="dashboard-card">
           <div className="survey-header-card">
             <div className="survey-header-left">
-               <h1 style={{ marginBottom: "0.75rem" }}>Video Sonu Anketleri</h1>
+              <h1 style={{ marginBottom: "0.75rem" }}>Video Sonu Anketleri</h1>
             </div>
             <button className="link-btn" type="button" onClick={() => router.push("/dashboard")}>
               ← Dashboard’a dön
             </button>
           </div>
 
-          <p
-            style={{
-              fontSize: "0.85rem",
-              color: "#6b7280",
-              marginBottom: "1.2rem",
-            }}
-          >
-            Her videodan sonra kısa bir anket açılır. Videoyu bitirdikten sonra
-            ilgili anketi buradan doldurabilirsin.
+          <p style={{ fontSize: "0.85rem", color: "#6b7280", marginBottom: "1.2rem" }}>
+            Her videodan sonra kısa bir anket açılır. Videoyu bitirdikten sonra ilgili anketi buradan doldurabilirsin.
           </p>
 
           <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "0.85rem",
-              }}
-            >
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
               <thead>
-                <tr
-                  style={{
-                    textAlign: "left",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
+                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
                   <th style={{ padding: "0.6rem 0.2rem" }}>Bölüm</th>
                   <th style={{ padding: "0.6rem 0.2rem" }}>Başlık</th>
                   <th style={{ padding: "0.6rem 0.2rem" }}>Durum</th>
                   <th style={{ padding: "0.6rem 0.2rem" }}>İşlem</th>
                 </tr>
               </thead>
+
               <tbody>
                 {items.map((item) => {
-                  const locked =  !item.completed; // Anketi varsa ama videoyu tamamlamadıysa kilitli olsun                
                   const hasSurvey = !!item.surveyId;
 
-                  let statusBadge;
+                  // ✅ doğru kilit mantığı:
+                  // anket var + anket tamamlanmadı + video tamamlanmadı => kilitli
+                  const locked = hasSurvey && !item.completed && !item.videoCompleted;
+
+                  let statusBadge: React.ReactNode;
                   if (!hasSurvey) {
-                    statusBadge = (
-                      <span style={{ color: "#9ca3af" }}>
-                        Bu video için anket yok
-                      </span>
-                    );
+                    statusBadge = <span style={{ color: "#9ca3af" }}>Bu video için anket yok</span>;
                   } else if (item.completed) {
                     statusBadge = (
                       <span
@@ -176,52 +162,92 @@ export default function SurveysPage() {
 
                   let action: React.ReactNode = null;
                   if (!hasSurvey) {
-                    action = (
-                      <span style={{ fontSize: "0.78rem", color: "#9ca3af" }}>
-                        —
-                      </span>
-                    );
+                    action = <span style={{ fontSize: "0.78rem", color: "#9ca3af" }}>—</span>;
                   } else if (locked) {
-                    action = (
-                      <span style={{ fontSize: "0.78rem", color: "#9ca3af" }}>
-                        Videoyu bitirince açılacak
-                      </span>
-                    );
+                    action = <span style={{ fontSize: "0.78rem", color: "#9ca3af" }}>Videoyu bitirince açılacak</span>;
                   } else if (item.completed) {
                     action = (
-                      <a
-                        href={`/surveys/${item.surveyId}`}
-                        style={{ fontSize: "0.8rem" }}
-                      >
-                        Cevapları gör ↗
+                      <a href={`/surveys/${item.surveyId}`} style={{ fontSize: "0.8rem" }}>
+                        Cevapları gör ↗️
                       </a>
                     );
                   } else {
                     action = (
-                      <a
-                        href={`/surveys/${item.surveyId}`}
-                        style={{ fontSize: "0.8rem" }}
-                      >
-                        Ankete başla ↗
+                      <a href={`/surveys/${item.surveyId}`} style={{ fontSize: "0.8rem" }}>
+                        Ankete başla ↗️
                       </a>
                     );
                   }
 
                   return (
                     <tr key={item.videoId}>
-                      <td style={{ padding: "0.55rem 0.2rem" }}>
-                        Bölüm {item.order}
-                      </td>
-                      <td style={{ padding: "0.55rem 0.2rem" }}>
-                        {item.title || `Video ${item.order} anketi`}
-                      </td>
-                      <td style={{ padding: "0.55rem 0.2rem" }}>
-                        {statusBadge}
-                      </td>
+                      <td style={{ padding: "0.55rem 0.2rem" }}>Bölüm {item.order}</td>
+                      <td style={{ padding: "0.55rem 0.2rem" }}>{item.title || `Video ${item.order} anketi`}</td>
+                      <td style={{ padding: "0.55rem 0.2rem" }}>{statusBadge}</td>
                       <td style={{ padding: "0.55rem 0.2rem" }}>{action}</td>
                     </tr>
                   );
                 })}
+
+                {/* ✅ FOLLOWUP satırı */}
+                {followupSurveyId && (
+                  <tr key="followup-row">
+                    <td style={{ padding: "0.55rem 0.2rem" }}>FOLLOWUP</td>
+                    <td style={{ padding: "0.55rem 0.2rem" }}>{followup?.title ?? "6 Ay Sonrası Anketi"}</td>
+                    <td style={{ padding: "0.55rem 0.2rem" }}>
+                      {followupCompleted ? (
+                        <span
+                          style={{
+                            padding: "0.15rem 0.6rem",
+                            borderRadius: 999,
+                            background: "#dcfce7",
+                            color: "#15803d",
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          Tamamlandı
+                        </span>
+                      ) : followupNeeded ? (
+                        <span
+                          style={{
+                            padding: "0.15rem 0.6rem",
+                            borderRadius: 999,
+                            background: "#fef3c7",
+                            color: "#92400e",
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          Bekliyor
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            padding: "0.15rem 0.6rem",
+                            borderRadius: 999,
+                            background: "#f3f4f6",
+                            color: "#6b7280",
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          Zamanı değil
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: "0.55rem 0.2rem" }}>
+                      {followupCompleted ? (
+                        <a href={`/surveys/${followupSurveyId}`} style={{ fontSize: "0.8rem" }}>
+                          Cevapları gör ↗️
+                        </a>
+                      ) : followupNeeded ? (
+                        <a href={`/surveys/${followupSurveyId}`} style={{ fontSize: "0.8rem" }}>
+                          Ankete başla ↗️
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: "0.78rem", color: "#9ca3af" }}>Zamanı gelince açılacak</span>
+                      )}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -235,8 +261,7 @@ export default function SurveysPage() {
 function Style() {
   return (
     <style jsx global>{`
-      
-        .link-btn {
+      .link-btn {
         background: transparent;
         border: none;
         color: #4f46e5;
@@ -244,15 +269,15 @@ function Style() {
         font-weight: 700;
         padding: 6px 8px;
         border-radius: 10px;
-        }
-        .link-btn:hover {
-          background: rgba(79, 70, 229, 0.08);
-        }
-        .survey-header-left {
+      }
+      .link-btn:hover {
+        background: rgba(79, 70, 229, 0.08);
+      }
+      .survey-header-left {
         flex: 1;
         min-width: 0;
       }
-        .survey-header-card {
+      .survey-header-card {
         border-radius: 22px;
         padding: 18px 18px;
         background: rgba(255, 255, 255, 0.92);
@@ -262,8 +287,7 @@ function Style() {
         justify-content: space-between;
         gap: 16px;
         margin-bottom: 14px;
-      }
-      }
+      }       
     `}</style>
   );
 }

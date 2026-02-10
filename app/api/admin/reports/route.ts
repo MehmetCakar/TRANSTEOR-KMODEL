@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
-  // 3) Watch kayıtları (tüm videoId’ler)
+  // 3) Watch kayıtları
   const allWatches = videos.length
     ? await prisma.videoWatch.findMany({
         where: { videoId: { in: videos.map((v) => v.id) } },
@@ -78,33 +78,35 @@ export async function GET(req: NextRequest) {
   const watchByUserVideo = new Map<string, any>();
   for (const w of allWatches) watchByUserVideo.set(`${w.userId}:${w.videoId}`, w);
 
-  // 4) Survey’leri ikiye ayır: VIDEO ve FOLLOWUP
+  // 4) VIDEO survey'leri
   const videoSurveys = videos.length
     ? await prisma.survey.findMany({
-        where: {
-          type: "VIDEO",
-          isActive: true,
-          videoId: { in: videos.map((v) => v.id) },
-        },
+        where: { type: "VIDEO", isActive: true, videoId: { in: videos.map((v) => v.id) } },
         include: {
           questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } },
         },
       })
     : [];
 
-  const followupSurveys = await prisma.survey.findMany({
+  const surveyByVideoId = new Map<string, any>();
+  for (const s of videoSurveys) if (s.videoId) surveyByVideoId.set(s.videoId, s);
+
+  // 5) FOLLOWUP survey (tek tane: en yenisi)
+  const followupSurvey = await prisma.survey.findFirst({
     where: { type: "FOLLOWUP", isActive: true },
+    orderBy: { createdAt: "desc" },
     include: {
       questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } },
     },
   });
 
-  const surveyByVideoId = new Map<string, any>();
-  for (const s of videoSurveys) if (s.videoId) surveyByVideoId.set(s.videoId, s);
+ 
+  const allSurveyIds = [
+    ...videoSurveys.map((s) => s.id),
+    ...(followupSurvey ? [followupSurvey.id] : []),
+  ];
 
-  const allSurveyIds = [...videoSurveys, ...followupSurveys].map((s) => s.id);
-
-  // 5) Survey cevapları (VIDEO + FOLLOWUP)
+  // 6) Survey cevapları (VIDEO + FOLLOWUP)
   const responses = allSurveyIds.length
     ? await prisma.surveyResponse.findMany({
         where: { surveyId: { in: allSurveyIds } },
@@ -112,12 +114,23 @@ export async function GET(req: NextRequest) {
       })
     : [];
 
+  console.log("FOLLOWUP SURVEY:", followupSurvey?.id);
+
+  console.log(
+    "FOLLOWUP RESPONSES:",
+    responses.filter(r => r.surveyId === followupSurvey?.id)
+  );
+
+
   const respondedUserSurveySet = new Set<string>();
   for (const r of responses) respondedUserSurveySet.add(`${r.userId}:${r.surveyId}`);
 
-  const scoreByUserSurvey = buildScoreMaps([...videoSurveys, ...followupSurveys], responses);
+  const scoreByUserSurvey = buildScoreMaps(
+    [...videoSurveys, ...(followupSurvey ? [followupSurvey] : [])],
+    responses
+  );
 
-  // 6) VIDEO raporu (mevcut formatı koruyoruz)
+  // 7) VIDEO report (mevcut format)
   const report: any[] = [];
 
   const watchedUserVideoSet = new Set<string>();
@@ -176,30 +189,41 @@ export async function GET(req: NextRequest) {
     report.push({ video: v, users: rows });
   }
 
-  // 7) FOLLOWUP raporu 
-  const followup = followupSurveys.map((s) => {
-    const rows = users
-      .map((u) => {
-        const score = scoreByUserSurvey.get(`${u.id}:${s.id}`) || null;
-        if (!score) return null;
+ // 8) FOLLOWUP tek obje döndür (response varsa göster)
+    let followup: any = null;
 
-        return {
-          user: { id: u.id, email: u.email },
-          survey: {
-            surveyId: s.id,
-            title: s.title,
-            type: s.type,
-            filled: true,
-            ...score,
-            answeredAt:
-              responses.find((r) => r.userId === u.id && r.surveyId === s.id)?.createdAt?.toISOString?.() ?? null,
-          },
-        };
-      })
-      .filter(Boolean);
+    if (followupSurvey) {
+      const fuUsers = responses
+        .filter((r) => r.surveyId === followupSurvey.id)
+        .map((r) => {
+          const u = users.find((x) => x.id === r.userId);
+          if (!u) return null;
 
-    return { survey: { id: s.id, title: s.title, type: s.type }, users: rows };
-  });
+          const score = scoreByUserSurvey.get(`${u.id}:${followupSurvey.id}`) || null;
+
+          return {
+            user: { id: u.id, email: u.email },
+            survey: {
+              surveyId: followupSurvey.id,
+              title: followupSurvey.title,
+              type: followupSurvey.type,
+              filled: true,              // ✅ response VAR
+              total: score?.total ?? null,
+              correct: score?.correct ?? null,
+              wrong: score?.wrong ?? null,
+              scorePct: score?.scorePct ?? null,
+              answeredAt: r.createdAt?.toISOString?.() ?? null,
+            },
+          };
+        })
+        .filter(Boolean);
+
+      followup = {
+        surveyId: followupSurvey.id,
+        title: followupSurvey.title,
+        users: fuUsers,
+      };
+    }
 
   return NextResponse.json({ ok: true, report, followup });
 }

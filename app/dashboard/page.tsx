@@ -27,6 +27,7 @@ type DashboardData = {
       completed?: number;
     };
     followup?: {
+      completed?: boolean;
       surveyId: string | null;
       needed: boolean;
       title: string | null;
@@ -44,7 +45,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+ 
   const active = data?.changeStages?.active ?? 1;
 
   // basamaklar 1..5
@@ -130,6 +131,9 @@ export default function DashboardPage() {
   const followup = surveys?.followup;
   const followupNeeded = followup?.needed ?? false;
   const followupSurveyId = followup?.surveyId ?? null;
+  const followupCompleted = data?.surveys?.followup?.completed ?? false;
+  
+  
 
   return (
     <div className="app-shell">
@@ -355,26 +359,47 @@ export default function DashboardPage() {
               >
                 <div className="survey-label">
                   <span className="survey-name" style={{ fontWeight: 600 }}>
-                    6 Ay Sonrası
-                  </span>{" "}
+                    6 Ay Sonrası Anketi      
+                  </span>
+
+                  {/* Badge */}
                   <span
                     className="survey-badge"
                     style={{
                       fontSize: "0.75rem",
                       padding: "0.15rem 0.55rem",
                       borderRadius: 999,
-                      background: "#fef3c7",
-                      color: "#92400e",
-                      marginLeft: 6,
+                      marginLeft: 20,
+
+                      background: followupCompleted
+                        ? "#dcfce7" // green
+                        : followupNeeded
+                        ? "#fef3c7" // yellow
+                        : "#e5e7eb", // gray
+                      color: followupCompleted
+                        ? "#166534"
+                        : followupNeeded
+                        ? "#92400e"
+                        : "#374151",
                     }}
                   >
-                    {followupNeeded
-                      ? "Bekliyor"
-                      : "Tamamlandı / zamanı değil"}
+                    {followupCompleted ? "✅ Tamamlandı" : followupNeeded ? "⏳ Bekliyor" : "🔒 Zamanı gelmedi"}
                   </span>
+
+                  {/* Extra text after completion */}
+                  {followupCompleted && (
+                    <span style={{ marginLeft: 11, fontSize: "0.78rem", color: "#166534", fontWeight: 600 }}>
+                      Tüm anketler tamamlandı 🎉
+                    </span>
+                  )}
                 </div>
+
                 <div>
-                  {followupNeeded && followupSurveyId ? (
+                  {followupCompleted ? (
+                    <span style={{ fontSize: "0.82rem", color: "#16a34a", fontWeight: 700 }}>
+                      
+                    </span>
+                  ) : followupNeeded && followupSurveyId ? (
                     <Link
                       className="survey-link"
                       href={`/surveys/${followupSurveyId}`}

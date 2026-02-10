@@ -3,42 +3,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseJWT } from "@/lib/jwt";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ surveyId: string }> }
-) {
-  const { surveyId } = await params;
-
+async function getUserFromToken(req: NextRequest) {
   const token = req.cookies.get("access_token")?.value;
-  if (!token) return NextResponse.json({ error: "no auth" }, { status: 401 });
+  if (!token) return { user: null, error: NextResponse.json({ error: "no auth" }, { status: 401 }) };
 
-  let email = "";
+  let claim: string;
   try {
-    email = parseJWT(token); // string email
+    claim = String(parseJWT(token)).trim();
   } catch {
-    return NextResponse.json({ error: "invalid token" }, { status: 401 });
+    return { user: null, error: NextResponse.json({ error: "invalid token" }, { status: 401 }) };
   }
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ id: claim }, { email: claim.toLowerCase() }] },
+  });
+
+  if (!user) return { user: null, error: NextResponse.json({ error: "user not found" }, { status: 404 }) };
+  return { user, error: null };
+}
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ surveyId: string }> }) {
+  const { surveyId } = await params;
+
+  const { user, error } = await getUserFromToken(req);
+  if (error) return error;
 
   const body = await req.json().catch(() => null);
-  const answers: { questionId: string; optionId: string }[] = Array.isArray(body?.answers)
-    ? body.answers
-    : [];
+  const answers: { questionId: string; optionId: string }[] = Array.isArray(body?.answers) ? body.answers : [];
 
   const survey = await prisma.survey.findUnique({
     where: { id: surveyId },
     include: {
-      questions: {
-        include: { options: true },
-        orderBy: { order: "asc" },
-      },
+      questions: { include: { options: true }, orderBy: { order: "asc" } },
     },
   });
-  if (!survey) return NextResponse.json({ error: "survey not found" }, { status: 404 });
+  if (!survey || !survey.isActive) return NextResponse.json({ error: "survey not found" }, { status: 404 });
 
-  // doğruları map'le
   const correctByQuestion = new Map<string, string>();
   for (const q of survey.questions) {
     const correct = q.options.find((o) => o.isCorrect);
@@ -54,11 +54,10 @@ export async function POST(
     if (correctByQuestion.get(q.id) === a.optionId) correctCount++;
   }
 
-  // DB'ye kaydet (answers Json)
   await prisma.surveyResponse.upsert({
-    where: { userId_surveyId: { userId: user.id, surveyId: survey.id } },
+    where: { userId_surveyId: { userId: user!.id, surveyId: survey.id } },
     update: { answers },
-    create: { userId: user.id, surveyId: survey.id, answers },
+    create: { userId: user!.id, surveyId: survey.id, answers },
   });
 
   return NextResponse.json({

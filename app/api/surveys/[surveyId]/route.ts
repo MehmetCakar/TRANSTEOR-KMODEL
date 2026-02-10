@@ -3,34 +3,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseJWT } from "@/lib/jwt";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ surveyId: string }> }
-) {
-  const { surveyId } = await params;
-
+async function getUserFromToken(req: NextRequest) {
   const token = req.cookies.get("access_token")?.value;
-  if (!token) return NextResponse.json({ error: "no auth" }, { status: 401 });
+  if (!token) return { user: null, error: NextResponse.json({ error: "no auth" }, { status: 401 }) };
 
-  let email = "";
-  try {
-    email = parseJWT(token);
-  } catch {
-    return NextResponse.json({ error: "invalid token" }, { status: 401 });
-  }
   let claim = "";
   try {
     claim = String(parseJWT(token)).trim();
   } catch {
-    return NextResponse.json({ error: "invalid token" }, { status: 401 });
+    return { user: null, error: NextResponse.json({ error: "invalid token" }, { status: 401 }) };
   }
 
   const user = await prisma.user.findFirst({
-    where: {
-      OR: [{ id: claim }, { email: claim.toLowerCase() }],
-    },
+    where: { OR: [{ id: claim }, { email: claim.toLowerCase() }] },
   });
-  if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
+
+  if (!user) return { user: null, error: NextResponse.json({ error: "user not found" }, { status: 404 }) };
+  return { user, error: null };
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ surveyId: string }> }) {
+  const { surveyId } = await params;
+
+  const { user, error } = await getUserFromToken(req);
+  if (error) return error;
 
   const survey = await prisma.survey.findUnique({
     where: { id: surveyId },
@@ -52,10 +48,9 @@ export async function GET(
   }
 
   const response = await prisma.surveyResponse.findFirst({
-    where: { userId: user.id, surveyId: survey.id },
+    where: { userId: user!.id, surveyId: survey.id },
   });
 
-  // kullanıcı daha doldurmadıysa: doğru şık bilgisi dönme (spoiler olmasın)
   if (!response) {
     return NextResponse.json({
       ok: true,
@@ -76,7 +71,6 @@ export async function GET(
     });
   }
 
-  // doldurduysa: sonucu hesapla + doğru şık idsini dön
   const answers: { questionId: string; optionId: string }[] = Array.isArray(response.answers)
     ? (response.answers as any)
     : [];
@@ -106,11 +100,7 @@ export async function GET(
         id: q.id,
         order: q.order,
         text: q.text,
-        options: q.options.map((o) => ({
-          id: o.id,
-          order: o.order,
-          text: o.text,
-        })),
+        options: q.options.map((o) => ({ id: o.id, order: o.order, text: o.text })),
         correctOptionId: correctByQuestion.get(q.id) || null,
       })),
     },

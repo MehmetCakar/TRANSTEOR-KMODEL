@@ -284,10 +284,11 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (surveyType !== "VIDEO") return;
-    if (!surveyVideoId) return;
-    loadSurveyForVideo(surveyVideoId);
+    if (surveyVideoId) return;
+    if (!videos?.length) return; 
+    setSurveyVideoId(videos[0].id); // video listesi geldiyse ama survey videoId yoksa ilk videoyu seç
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surveyVideoId, surveyType]);
+  }, [videos, surveyType]);
 
   async function saveVideo() {
     setMsg("");
@@ -303,11 +304,11 @@ export default function AdminPage() {
       return setMsg("title, url, durationSeconds zorunlu");
     }
 
-    // ✅ youtube link kabul, sadece ufak uyarı
+    // youtube link kabul, sadece ufak uyarı
     if (isYouTubeUrl(payload.url)) {
       const emb = toYouTubeEmbed(payload.url);
       if (!emb) return setMsg("YouTube linki geçersiz görünüyor (watch?v=... / youtu.be / embed / shorts)");
-      payload.url = emb; // ✅ DB'ye embed kaydet
+      payload.url = emb; // DB'ye embed kaydet
     }
 
     // Yeni video
@@ -529,6 +530,7 @@ export default function AdminPage() {
                     loadSurveyForVideo(vid);
                   }}
                 >
+                  <option value="">-- Bölüm Seç --</option>
                   {videos.map((v) => (
                     <option key={v.id} value={v.id}>
                       Bölüm {v.order} - {v.title}

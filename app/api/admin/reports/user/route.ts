@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId");
   const videoId = searchParams.get("videoId");
-  const surveyId = searchParams.get("surveyId"); // ✅ yeni
+  const surveyId = searchParams.get("surveyId"); // ✅ followup için
 
   if (!userId) return NextResponse.json({ error: "userId zorunlu" }, { status: 400 });
   if (!videoId && !surveyId) {
@@ -58,15 +58,18 @@ export async function GET(req: NextRequest) {
   });
   if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
 
-  // ✅ surveyId ile gelindiyse: FOLLOWUP dahil detay ver
+  // ✅ FOLLOWUP / herhangi bir survey detayı: surveyId ile
   if (surveyId) {
     const survey = await prisma.survey.findUnique({
       where: { id: surveyId },
       include: {
-        questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } },
+        questions: { orderBy: { order: "asc" }, include: { options: true } },
       },
     });
-    if (!survey) return NextResponse.json({ error: "survey not found" }, { status: 404 });
+
+    if (!survey || !survey.isActive) {
+      return NextResponse.json({ error: "survey not found" }, { status: 404 });
+    }
 
     const response = await prisma.surveyResponse.findFirst({
       where: { userId, surveyId: survey.id },
@@ -77,18 +80,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       user,
-      survey,
-      response,
-      stats,
-      // FOLLOWUP için watch yok — video alanını null dönüyoruz
       video: null,
       progress: null,
       watch: null,
       watchSummary: null,
+      survey,
+      response,
+      stats,
     });
   }
 
-  // ✅ eski akış: video raporu
+  // ✅ VIDEO akışı: videoId + userId
   const video = await prisma.video.findUnique({ where: { id: videoId! } });
   if (!video) return NextResponse.json({ error: "video not found" }, { status: 404 });
 
