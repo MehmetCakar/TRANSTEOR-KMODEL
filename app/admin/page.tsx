@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { json } from "stream/consumers";
 
 type Opt = { text: string; isCorrect: boolean };
 type Q = { text: string; options: Opt[] };
@@ -70,9 +71,11 @@ export default function AdminPage() {
   const [surveyTitle, setSurveyTitle] = useState("");
   const [surveyType, setSurveyType] = useState<"VIDEO" | "FOLLOWUP">("VIDEO");
   const [surveyVideoId, setSurveyVideoId] = useState<string>("");
+  const [followupSurveyId, setFollowupSurveyId] = useState<string | null>(null);
 
     // Yeni video mu?
-  const isNew = selectedVideoId === "_new_";
+  const NEW_ID = "__new__";
+  const isNew = selectedVideoId === NEW_ID;
 
   // Ekranda gösterilecek bölüm no
   const displayOrder = isNew
@@ -94,7 +97,22 @@ export default function AdminPage() {
     if (!url) return null;
     if (!isYouTubeUrl(url)) return null;
     return toYouTubeEmbed(url);
-  }, [url]);
+  }, [url]);  
+
+  function resetSurveyForm(nextType?: "VIDEO" | "FOLLOWUP") {
+    setEditingSurveyId(null);
+    setSurveyTitle("");
+    setQuestions([makeQuestion()]);
+
+    const t = nextType ?? surveyType;
+
+    if (t === "VIDEO") {
+      const vid = surveyVideoId || videos?.[0]?.id || "";
+      setSurveyVideoId(vid);
+    } else {
+      setSurveyVideoId(""); // FOLLOWUP'ta videoId yok
+    }
+  }
 
   async function loadVideos() {
     setMsg("");
@@ -127,13 +145,23 @@ export default function AdminPage() {
     if (!res.ok) return;
 
     const list = json?.surveys ?? [];
-    const map: Record<string, string> = {};
-    for (const s of list) {
-      if (s.videoId) map[s.videoId] = s.id;
-    }
-    setVideoSurveyMap(map);
-  }
 
+    const map: Record<string, string> = {};
+    let followupId: string | null = null;
+
+    for (const s of list) {
+      if (s.type === "VIDEO" && s.videoId) {
+        map[s.videoId] = s.id;
+      }
+      if (s.type === "FOLLOWUP") {
+        // tek followup mantığı: en günceli gelsin (api zaten desc dönüyor)
+        if (!followupId) followupId = s.id;
+      }
+    }
+
+    setVideoSurveyMap(map);
+    setFollowupSurveyId(followupId);
+  }
   async function resolveYouTube() {
     const input = url?.trim();
     if (!input) return;
@@ -172,6 +200,28 @@ export default function AdminPage() {
     }
   }
 
+  async function loadSurveyById(sid: string) {
+    const res = await fetch(`/api/admin/surveys/${sid}`, { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return setMsg(json.error || "Survey yüklenemedi");
+
+    const s = json.survey;
+    setEditingSurveyId(s.id);
+    setSurveyTitle(s.title ?? "");
+    setSurveyType(s.type);
+    setSurveyVideoId(s.videoId ?? ""); // followup ise boş kalır
+
+    setQuestions(
+      (s.questions ?? []).map((q: any) => ({
+        text: q.text ?? "",
+        options: (q.options ?? []).map((o: any) => ({
+          text: o.text ?? "",
+          isCorrect: !!o.isCorrect,
+        })),
+      }))
+    );
+  }
+
   async function loadSurveyForVideo(videoId: string) {
     const sid = videoSurveyMap[videoId];
     if (!sid) {
@@ -188,7 +238,6 @@ export default function AdminPage() {
     const s = json.survey;
     setEditingSurveyId(s.id);
     setSurveyTitle(s.title ?? "");
-    setSurveyType(s.type);
     setSurveyVideoId(s.videoId ?? "");
 
     setQuestions(
@@ -205,17 +254,40 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    (async () => {
-      await loadVideos();
-      await loadVideoSurveyMap();
-    })();
+      (async () => {
+        await loadVideos();
+        await loadVideoSurveyMap();
+      })();
 
-    (async () => {
-      const r = await fetch("/api/admin/videos");
-      if (r.status === 401 || r.status === 403) window.location.href = "/dashboard";
-    })();
+      (async () => {
+        const r = await fetch("/api/admin/videos");
+        if (r.status === 401 || r.status === 403) window.location.href = "/dashboard";
+      })();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+  useEffect(() => {
+    // type değişince “eski survey soruları üstünde kalmasın”
+    setEditingSurveyId(null);
+    setSurveyTitle("");
+    setQuestions([makeQuestion()]);
+
+    if (surveyType === "VIDEO") {
+      // VIDEO seçildiyse seçili videonun survey’ini yükle
+      if (surveyVideoId) loadSurveyForVideo(surveyVideoId);
+    } else {
+      // FOLLOWUP seçildiyse mevcut followup survey varsa onu yükle
+      if (followupSurveyId) loadSurveyById(followupSurveyId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [surveyType]);
+
+  useEffect(() => {
+    if (surveyType !== "VIDEO") return;
+    if (!surveyVideoId) return;
+    loadSurveyForVideo(surveyVideoId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surveyVideoId, surveyType]);
 
   async function saveVideo() {
     setMsg("");
@@ -316,9 +388,23 @@ export default function AdminPage() {
     if (!res.ok) return setMsg(json.error || "Survey eklenemedi");
 
     setMsg("✅ Survey kaydedildi");
-    await loadVideoSurveyMap();
-  }
 
+    // ✅ Map + followup id yenilensin
+    await loadVideoSurveyMap();
+
+    // ✅ Followup kaydettiysek: kaydettiğimiz survey’i edit moduna al
+    // (json.survey.id API'den dönüyor olmalı; sende POST /api/admin/surveys ok:true,survey:... dönüyor)
+    const savedId = json?.survey?.id;
+    if (surveyType === "FOLLOWUP" && savedId) {
+      await loadSurveyById(savedId);   // az önce verdiğim helper
+    }
+
+    // ✅ Video ise: o video için olan survey'i tekrar yükle (opsiyonel ama temiz)
+    if (surveyType === "VIDEO" && surveyVideoId) {
+      await loadSurveyForVideo(surveyVideoId);
+    }
+  }
+ 
   return (
     <div className="app-shell">
       <main className="app-main">

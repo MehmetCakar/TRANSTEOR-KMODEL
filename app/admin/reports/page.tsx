@@ -12,7 +12,7 @@ type ReportRow = {
     watchedPct: number;
     isCompleted: boolean;
     finishedAt: string | null;
-  };
+  }| null;
   survey: {
     surveyId: string | null;
     title: string | null;
@@ -28,6 +28,7 @@ type ReportRow = {
 type ReportItem = {
   video: { id: string; order: number; title: string; durationSeconds: number };
   users: ReportRow[];
+  kind?: "VIDEO" | "FOLLOWUP";
 };
 
 function fmtTime(sec: number) {
@@ -51,6 +52,8 @@ export default function AdminReportsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<any>(null);
 
+  
+
   async function loadReport() {
     setMsg("");
     setLoading(true);
@@ -63,7 +66,33 @@ export default function AdminReportsPage() {
         return;
       }
       const list: ReportItem[] = json.report || [];
-      setReport(list);
+      const follow = json.followup; 
+      // beklediğimiz şekil: followup = { surveyId, title, users:[{user, survey:{...}}] }
+
+      if (follow?.surveyId) {
+        const followItem: ReportItem = {
+          kind: "FOLLOWUP",
+          video: { id: "_followup_", order: 999, title: follow.title || "FOLLOWUP (6 Ay Sonrası)", durationSeconds: 0 },
+          users: (follow.users || []).map((r: any) => ({
+            user: r.user,
+            watch: null,
+            survey: {
+              surveyId: follow.surveyId,
+              title: follow.title,
+              hasSurvey: true,
+              filled: !!r.survey?.filled,
+              total: r.survey?.total,
+              correct: r.survey?.correct,
+              wrong: r.survey?.wrong,
+              scorePct: r.survey?.scorePct,
+            },
+          })),
+        };
+
+        setReport([...list, followItem]);
+      } else {
+        setReport(list);
+      }
 
       if (!selectedVideoId && list[0]?.video?.id) {
         setSelectedVideoId(list[0].video.id);
@@ -171,14 +200,13 @@ export default function AdminReportsPage() {
               <div className="list">
                 {report.map((it) => {
                   const active = it.video.id === selectedVideoId;
+                  const isFollow = it.video.id === "__followup__" || it.kind === "FOLLOWUP";
+
                   return (
-                    <button
-                      key={it.video.id}
-                      type="button"
-                      className={`list-item ${active ? "active" : ""}`}
-                      onClick={() => setSelectedVideoId(it.video.id)}
-                    >
-                      <div style={{ fontWeight: 900 }}>Bölüm {it.video.order}</div>
+                    <button key={it.video.id} className={active ? "list-item active" : "list-item"} onClick={() => setSelectedVideoId(it.video.id)}>
+                      <div style={{ fontWeight: 900 }}>
+                        {isFollow ? "FOLLOWUP" : `Bölüm ${it.video.order}`}
+                      </div>
                       <div style={{ opacity: 0.75, fontSize: 13 }}>{it.video.title}</div>
                     </button>
                   );
@@ -207,8 +235,8 @@ export default function AdminReportsPage() {
                     <tbody>
                       {rows.map((r) => {
                         const active = r.user.id === selectedUserId;
-                        const dur = r.watch.durationSeconds || 0;
-                        const watched = r.watch.watchedSeconds || 0;
+                        const dur = r.watch?.durationSeconds || 0;
+                        const watched = r.watch?.watchedSeconds || 0;
 
                         return (
                           <tr
@@ -220,17 +248,17 @@ export default function AdminReportsPage() {
                             <td>
                               <div style={{ fontWeight: 800 }}>{r.user.email}</div>
                               <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                {r.watch.isCompleted ? "✅ Completed" : "⏳ In progress"}
+                                {r.watch?.isCompleted ? "✅ Completed" : "⏳ In progress"}
                               </div>
                             </td>
 
                             <td>
-                              <div style={{ fontWeight: 800 }}>{r.watch.watchedPct}%</div>
+                              <div style={{ fontWeight: 800 }}>{r.watch?.watchedPct}%</div>
                               <div style={{ fontSize: 12, opacity: 0.7 }}>
                                 {fmtTime(watched)} / {fmtTime(dur)}
                               </div>
                               <div className="mini-bar">
-                                <div className="mini-bar-fill" style={{ width: `${r.watch.watchedPct}%` }} />
+                                <div className="mini-bar-fill" style={{ width: `${r.watch?.watchedPct || 0}%` }} />
                               </div>
                             </td>
 

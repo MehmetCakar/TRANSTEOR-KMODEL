@@ -42,12 +42,12 @@ model VideoProgress {
   videoId        String
   watchedSeconds Int       @default(0)
   isCompleted    Boolean   @default(false)
-  startedAt      DateTime  @default(now())
+  startedAt      DateTime? 
   finishedAt     DateTime?
   User           User      @relation(fields: [userId], references: [id])
   Video          Video     @relation(fields: [videoId], references: [id])
 
-  @@unique([userId, videoId])
+  @@unique([userId, videoId], name: "userId_videoId")
 }
 
 model VideoWatch {

@@ -18,8 +18,18 @@ export async function GET(
   } catch {
     return NextResponse.json({ error: "invalid token" }, { status: 401 });
   }
+  let claim = "";
+  try {
+    claim = String(parseJWT(token)).trim();
+  } catch {
+    return NextResponse.json({ error: "invalid token" }, { status: 401 });
+  }
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ id: claim }, { email: claim.toLowerCase() }],
+    },
+  });
   if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
 
   const survey = await prisma.survey.findUnique({

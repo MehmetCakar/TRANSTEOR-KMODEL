@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type PerVideoSurveyItem = {
   videoId: string;
@@ -31,6 +32,11 @@ type DashboardData = {
       title: string | null;
     };
   };
+  changeStages?: {
+    active: number;
+    completedVideos: number;
+    totalVideos: number;
+  };
 };
 
 export default function DashboardPage() {
@@ -38,6 +44,18 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const active = data?.changeStages?.active ?? 1;
+
+  // basamaklar 1..5
+  const steps = [
+    { n: 1, label: "Niyet Öncesi" },
+    { n: 2, label: "Niyet" },
+    { n: 3, label: "Hazırlık" },
+    { n: 4, label: "Eylem" },
+    { n: 5, label: "Sürdürme" },
+  ];
+
 
    async function handleLogout() {
     try {
@@ -357,13 +375,13 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   {followupNeeded && followupSurveyId ? (
-                    <a
+                    <Link
                       className="survey-link"
-                      href={`/survey/${followupSurveyId}`}
+                      href={`/surveys/${followupSurveyId}`}
                       style={{ fontSize: "0.82rem" }}
                     >
                       Başla ↗️
-                    </a>
+                    </Link>
                   ) : (
                     <span style={{ fontSize: "0.78rem", color: "#9ca3af" }}>
                       Zamanı geldiğinde açılacak
@@ -386,38 +404,58 @@ export default function DashboardPage() {
         </section>
 
         {/* ALT – DEĞİŞİM SÜRECİ BASAMAKLARI */}
-        <section className="dashboard-stages">
-          <div className="dashboard-stages-title">
-            DEĞİŞİM SÜRECİ BASAMAKLARI
-          </div>
-          <p className="dashboard-stages-sub">
-            Şu an için varsayılan olarak “Hazırlık” basamağındasın. Eğitim
-            ilerledikçe bu kısım kişisel hale getirilebilir.
-          </p>
+          <section className="dashboard-stages">
+            <div className="dashboard-stages-title">
+              DEĞİŞİM SÜRECİ BASAMAKLARI
+            </div>
 
-          <div className="dashboard-stage-list">
-            <div className="dashboard-stage-item">
-              <span>1</span>
-              Niyet Öncesi
-            </div>
-            <div className="dashboard-stage-item">
-              <span>2</span>
-              Niyet
-            </div>
-            <div className="dashboard-stage-item is-current">
-              <span>3</span>
-              Hazırlık
-            </div>
-            <div className="dashboard-stage-item">
-              <span>4</span>
-              Eylem
-            </div>
-            <div className="dashboard-stage-item">
-              <span>5</span>
-              Sürdürme
-            </div>
-          </div>
-        </section>
+            <p className="dashboard-stages-sub">
+              {(() => {
+                const s = data?.changeStages?.active ?? 1;
+                const labels: Record<number, string> = {
+                  1: "Niyet Öncesi",
+                  2: "Niyet",
+                  3: "Hazırlık",
+                  4: "Eylem",
+                  5: "Sürdürme",
+                };
+                return `Şu an “${labels[s] ?? "Niyet Öncesi"}” basamağındasın. Eğitim ilerledikçe bu kısım kişisel hale getirilebilir.`;
+              })()}
+            </p>
+
+            {(() => {
+              const active = data?.changeStages?.active ?? 1;
+
+              const steps = [
+                { n: 1, label: "Niyet Öncesi" },
+                { n: 2, label: "Niyet" },
+                { n: 3, label: "Hazırlık" },
+                { n: 4, label: "Eylem" },
+                { n: 5, label: "Sürdürme" },
+              ];
+
+              return (
+                <div className="dashboard-stage-list">
+                  {steps.map((st) => {
+                    const cls = [
+                      "dashboard-stage-item",
+                      st.n === active ? "is-current" : "",
+                      st.n < active ? "is-done" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
+
+                    return (
+                      <div key={st.n} className={cls}>
+                        <span>{st.n}</span>
+                        {st.label}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </section>
       </main>
     </div>
   );

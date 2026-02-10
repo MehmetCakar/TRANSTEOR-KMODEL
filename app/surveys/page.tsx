@@ -120,7 +120,7 @@ export default function SurveysPage() {
               </thead>
               <tbody>
                 {items.map((item) => {
-                  const locked = !item.videoCompleted;
+                  const locked =  !item.completed; // Anketi varsa ama videoyu tamamlamadıysa kilitli olsun                
                   const hasSurvey = !!item.surveyId;
 
                   let statusBadge;

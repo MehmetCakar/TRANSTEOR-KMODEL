@@ -1,26 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { parseJWT } from '@/lib/auth';
+// app/api/auth/me/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { parseJWT } from "@/lib/jwt";
 
-export async function GET(_req: NextRequest) {
-  const cookieStore = cookies();
-  const token = cookieStore.get('access_token')?.value;
+export async function GET(req: NextRequest) {
+  const token = req.cookies.get("access_token")?.value;
 
   if (!token) {
-    return NextResponse.json(
-      { error: 'no auth' },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "no auth" }, { status: 401 });
   }
 
   try {
-    const email = parseJWT(token);
+    const email = String(parseJWT(token)).trim().toLowerCase();
     return NextResponse.json({ email });
   } catch (err) {
     console.error(err);
-    return NextResponse.json(
-      { error: 'invalid token' },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "invalid token" }, { status: 401 });
   }
 }

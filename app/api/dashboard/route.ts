@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "no auth" }, { status: 401 });
     }
 
-    // ✅ parseJWT bazen email döner bazen userId dönebilir
+    // parseJWT bazen email döner bazen userId dönebilir
     let claim: string;
     try {
       claim = String(parseJWT(token)).trim();
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "invalid token" }, { status: 401 });
     }
 
-    // ✅ kullanıcıyı hem id hem email ile bul
+    //  kullanıcıyı hem id hem email ile bul
     const user = await prisma.user.findFirst({
       where: {
         OR: [{ id: claim }, { email: claim.toLowerCase() }],
@@ -45,6 +45,22 @@ export async function GET(req: NextRequest) {
     });
 
     const completedCount = progresses.filter((p) => p.isCompleted).length;
+
+    // completedCount: kaç video isCompleted true
+    // basamak: 1..5
+    let stage = 1;
+    if (completedCount >= 1) stage = 1;           // istersen 1 kalsın
+    if (completedCount >= 2) stage = 2;
+    if (completedCount >= 4) stage = 3;
+    if (completedCount >= 6) stage = 4;
+    if (completedCount >= 8) stage = 5;
+
+    // Alternatif daha kısa:
+    const stage2 =
+      completedCount >= 8 ? 5 :
+      completedCount >= 6 ? 4 :
+      completedCount >= 4 ? 3 :
+      completedCount >= 2 ? 2 : 1;
 
     const lastCompleted = await prisma.videoProgress.findFirst({
       where: { userId: user.id, isCompleted: true },
@@ -84,6 +100,11 @@ export async function GET(req: NextRequest) {
 
     const totalVideoSurveys = surveysPerVideo.length;
     const completedVideoSurveys = surveysPerVideo.filter((s) => s.completed).length;
+    const lastVideo = videos[videos.length - 1] || null;
+    const lastVideoProgress = lastVideo
+      ? progresses.find(p => p.videoId === lastVideo.id)
+      : null;
+
 
     // ✅ unlock kuralı: videoCompleted OR surveyCompleted
     const isUnlocked = (videoId: string) => {
@@ -97,6 +118,13 @@ export async function GET(req: NextRequest) {
 
     const unlockedCount = videos.filter((v) => isUnlocked(v.id)).length;
 
+    // unlockedCount hesapladıktan hemen sonra:
+    const stageByUnlocked =
+      unlockedCount >= 8 ? 5 :
+      unlockedCount >= 6 ? 4 :
+      unlockedCount >= 4 ? 3 :
+      unlockedCount >= 2 ? 2 : 1;
+
     // 6 ay sonrası followup
     const followupSurvey = allSurveys.find((s) => s.type === "FOLLOWUP") || null;
 
@@ -105,9 +133,13 @@ export async function GET(req: NextRequest) {
       : null;
 
     let followupNeeded = false;
-    if (followupSurvey && lastCompleted?.finishedAt) {
-      const sixMonthsLater = new Date(lastCompleted.finishedAt);
+    let followupAvailableAt: Date | null = null;
+
+    if (followupSurvey && lastVideoProgress?.startedAt) {
+      const sixMonthsLater = new Date(lastVideoProgress.startedAt);
       sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
+
+      followupAvailableAt = sixMonthsLater;
       followupNeeded = new Date() >= sixMonthsLater;
     }
 
@@ -133,11 +165,23 @@ export async function GET(req: NextRequest) {
           completed: completedVideoSurveys,
         },
         followup: {
-          surveyId: followupSurvey?.id ?? null,
-          title: followupSurvey?.title ?? null,
-          completed: !!followupResponse,
-          needed: !!followupSurvey && followupNeeded && !followupResponse,
+            surveyId: followupSurvey?.id ?? null,
+            title: followupSurvey?.title ?? null,
+            completed: !!followupResponse,
+            needed: !!followupSurvey && followupNeeded && !followupResponse,
+
+            //  UI için 
+            availableAt: followupAvailableAt?.toISOString() ?? null,
+            triggered: !!lastVideoProgress?.startedAt,   
+            triggeredByVideo: lastVideo?.order ?? null,
+          },
         },
+
+        changeStages: {
+          active: stageByUnlocked,
+          unlockedCount,
+          completedStrict: completedCount,
+          totalVideos: videos.length,
       },
     });
   } catch (err: any) {

@@ -8,13 +8,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const r = await requireAdmin(req);
-  if (!r.ok) return r.status;
+  if (!r.ok) {
+    return NextResponse.json({ ok: false, error: r.error }, { status: r.status });
+  }
 
   const { id: surveyId } = await params;
   const body = await req.json().catch(() => ({}));
 
   const order = Number(body.order);
   const text = String(body.text || "").trim();
+
   if (!order || !text) {
     return NextResponse.json({ error: "order/text zorunlu" }, { status: 400 });
   }
